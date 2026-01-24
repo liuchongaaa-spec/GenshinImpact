@@ -2,11 +2,10 @@
 """
 主窗口模块
 """
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 
 import time
+import sys
 import io
 import threading
 
@@ -19,21 +18,21 @@ from PyQt5.QtGui import QTextCursor
 from PIL import ImageGrab
 import keyboard
 
-from stealth_assistant.config import (
+from AIOverlay.config import (
     GLOBAL_HOTKEY, FLASH_MODELS,
     WINDOW_DEFAULT_WIDTH, WINDOW_DEFAULT_HEIGHT,
     WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT
 )
 
-from stealth_assistant.ai_service import AIService
-from stealth_assistant.audio_handler import AudioHandler
-from stealth_assistant.stealth import stealth_manager
-from stealth_assistant.utils.signals import WorkerSignals
-from stealth_assistant.utils.markdown_renderer import markdown_to_html, get_markdown_css
+from AIOverlay.ai_service import AIService
+from AIOverlay.audio_handler import AudioHandler
+from AIOverlay.stealth import stealth_manager
+from AIOverlay.utils.signals import WorkerSignals
+from AIOverlay.utils.markdown_renderer import markdown_to_html, get_markdown_css
 
-from stealth_assistant.ui.widgets import VolumeIndicator, OpacityControl, InlineSelector, stealth_warning, stealth_critical
-from stealth_assistant.ui.tray import TrayManager
-from stealth_assistant.ui.styles import (
+from AIOverlay.ui.widgets import VolumeIndicator, OpacityControl, InlineSelector, stealth_warning, stealth_critical
+from AIOverlay.ui.tray import TrayManager
+from AIOverlay.ui.styles import (
     MAIN_WINDOW_STYLE, CLOSE_BUTTON_STYLE, PRIMARY_BUTTON_STYLE,
     RECORDING_BUTTON_STYLE, SCREENSHOT_BUTTON_STYLE, SCROLL_BUTTON_STYLE,
     COMBOBOX_STYLE

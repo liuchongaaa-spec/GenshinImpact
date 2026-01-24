@@ -4,7 +4,7 @@ import sys
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import Qt
 
-from stealth_assistant.ui.main_window import StealthAssistant
+from AIOverlay.ui.main_window import StealthAssistant
 
 
 def main():
@@ -15,13 +15,13 @@ def main():
     
     # 简单的环境检查
     try:
-        from stealth_assistant.config import GEMINI_API_KEY
+        from AIOverlay.config import GEMINI_API_KEY
         if not GEMINI_API_KEY or "AIza" not in GEMINI_API_KEY:
             print("❌ API Key Error: Please check config.py")
         else:
             print("✅ API Key configured")
-    except Exception:
-        print("❌ Config Error")
+    except Exception as e:
+        print(f"❌ Config Error: {e}")
         
     app = QApplication(sys.argv)
     

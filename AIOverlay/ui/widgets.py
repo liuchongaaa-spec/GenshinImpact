@@ -11,7 +11,7 @@ from PyQt5.QtWidgets import (
     QPushButton, QListWidget, QListWidgetItem, QFrame, QApplication
 )
 from PyQt5.QtCore import Qt, pyqtSignal, QPoint, QEvent
-from .styles import VOLUME_BAR_STYLE, VOLUME_BAR_HIGH_STYLE
+from AIOverlay.ui.styles import VOLUME_BAR_STYLE, VOLUME_BAR_HIGH_STYLE
 
 
 class InlineSelector(QWidget):

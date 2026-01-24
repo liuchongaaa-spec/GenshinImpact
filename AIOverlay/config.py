@@ -4,7 +4,7 @@
 """
 
 # ================= API配置 =================
-GEMINI_API_KEY = "AIzaSyC0oEamJeMtjij3VTgJIrF0gECdpCcss9s"
+GEMINI_API_KEY = "*****"
 
 # ================= 快捷键配置 =================
 GLOBAL_HOTKEY = "alt+q"  # 隐藏/显示快捷键 (左手单手操作)
