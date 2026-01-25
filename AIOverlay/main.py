@@ -5,7 +5,6 @@ from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import Qt
 
 from AIOverlay.ui.main_window import StealthAssistant
-from AIOverlay.config import GEMINI_API_KEY
 
 
 def main():
@@ -14,21 +13,33 @@ def main():
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     
-    # 简单的环境检查
-    config_ok = False
+    # 配置检查
     try:
-        if not GEMINI_API_KEY or "AIza" not in GEMINI_API_KEY:
-            print("❌ API Key Error: Please check config.py")
-            print("程序将退出...")
-        else:
-            print("✅ API Key configured")
-            config_ok = True
-    except Exception as e:
-        print(f"❌ Config Error: {e}")
+        from AIOverlay.config import GEMINI_API_KEY, SYSTEM_PROMPT
+        from AIOverlay.utils.exceptions import InitializationError
+        print("✅ 配置加载成功")
+    except InitializationError as e:
+        print(f"❌ 初始化失败: {e}")
         print("程序将退出...")
+        sys.exit(1)
+    except Exception as e:
+        print(f"❌ 未知错误: {e}")
+        print("程序将退出...")
+        sys.exit(1)
     
-    # 如果配置检查失败，立即退出
-    if not config_ok:
+    # AI 服务连接测试
+    try:
+        from AIOverlay.ai_service import AIService
+        print("⏳ 测试 AI 服务连接...")
+        AIService.test_connection(GEMINI_API_KEY)
+        print("✅ AI 服务连接成功")
+    except InitializationError as e:
+        print(f"❌ {e}")
+        print("程序将退出...")
+        sys.exit(1)
+    except Exception as e:
+        print(f"❌ 未知错误: {e}")
+        print("程序将退出...")
         sys.exit(1)
         
     app = QApplication(sys.argv)

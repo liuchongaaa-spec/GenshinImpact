@@ -1,2 +1,2 @@
-- 运行前需要将 `config.md` 中的 `GEMINI_API_KEY` 替换为你自己的 Key  
-- 提交代码到 Git 时 **不要** 将 `GEMINI_API_KEY` 也给提交了 
+- 运行前需要将 `config.py` 中的 `GEMINI_API_KEY` 替换为你自己的 Key  
+- 运行前需要先配置系统提示词，详情见config.py
