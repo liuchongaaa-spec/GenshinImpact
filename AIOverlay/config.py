@@ -47,9 +47,9 @@ GLOBAL_HOTKEY = "alt+q"  # 隐藏/显示快捷键 (左手单手操作)
 # ================= 模型配置 =================
 # Flash 模型列表 (快速响应)
 FLASH_MODELS = [
-    ("Gemini 2.5 Flash", "gemini-2.5-flash"),
-    ("Gemini 3 Flash Preview", "gemini-3-flash-preview"),
     ("Gemini Flash Latest", "gemini-flash-latest"),
+    ("Gemini 3 Flash Preview", "gemini-3-flash-preview"),
+    ("Gemini 2.5 Flash", "gemini-2.5-flash"),
 ]
 
 # ================= 模式常量 =================

@@ -6,7 +6,7 @@ import numpy as np
 import soundcard as sc
 import soundfile as sf
 import os
-from config import AUDIO_SAMPLE_RATE, AUDIO_CHUNK_FRAMES
+from AIOverlay.config import AUDIO_SAMPLE_RATE, AUDIO_CHUNK_FRAMES
 
 
 class AudioHandler:
