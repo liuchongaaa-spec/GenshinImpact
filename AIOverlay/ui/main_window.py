@@ -21,7 +21,8 @@ import keyboard
 from AIOverlay.config import (
     GLOBAL_HOTKEY, FLASH_MODELS,
     WINDOW_DEFAULT_WIDTH, WINDOW_DEFAULT_HEIGHT,
-    WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT
+    WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT,
+    SYSTEM_PROMPT
 )
 
 from AIOverlay.ai_service import AIService
@@ -84,6 +85,7 @@ class StealthAssistant(QMainWindow):
         self.signals.error.connect(self._show_error)
         self.signals.toggle_visible.connect(self._handle_toggle_visible)
         self.signals.volume_update.connect(self._update_volume)
+        self.signals.render_markdown.connect(self._render_markdown_content)
         
     def _setup_hotkeys(self):
         """设置全局快捷键"""
@@ -330,7 +332,6 @@ class StealthAssistant(QMainWindow):
             threading.Thread(target=self._bg_record_process, daemon=True).start()
         else:
             self.is_recording = False
-            self.audio_handler.stop_recording()
             self.btn_record.setText("🎤 开始监听")
             self.btn_record.setStyleSheet(PRIMARY_BUTTON_STYLE)
             self.volume_indicator.hide()
@@ -339,29 +340,61 @@ class StealthAssistant(QMainWindow):
             
     def _bg_record_process(self):
         """后台录音处理"""
+        import numpy as np
+        import soundfile as sf
+        import ctypes
+        
         try:
-            def volume_callback(volume):
-                self.signals.volume_update.emit(volume)
-                
-            for _ in self.audio_handler.start_recording(volume_callback):
-                if not self.is_recording:
-                    break
-                    
-            if self.audio_handler.is_silent():
+            ctypes.windll.ole32.CoInitialize(None)
+        except Exception:
+            pass
+        
+        try:
+            # 使用预先获取的设备列表
+            idx = self.combo_devices.currentData()
+            if idx is None:
+                return
+            
+            if idx >= len(self.audio_handler.devices):
+                return
+            device = self.audio_handler.devices[idx]
+            
+            samplerate = 44100
+            buffer = []
+            
+            with device.recorder(samplerate=samplerate) as mic:
+                while self.is_recording:
+                    data = mic.record(numframes=samplerate // 5)
+                    buffer.append(data)
+                    # 计算并发送音量
+                    volume = AudioHandler.calculate_volume(data)
+                    self.signals.volume_update.emit(volume)
+            
+            if not buffer:
+                return
+            
+            self.signals.update_status.emit("转录音频...")
+            full_audio = np.concatenate(buffer, axis=0)
+            
+            if np.max(np.abs(full_audio)) < 0.01:
                 self.signals.update_left.emit("<div style='color:#ccc'>(无声)</div>")
                 self.signals.update_status.emit("就绪")
                 return
-                
-            # 保存音频
-            temp_file = "temp_capture_stream.wav"
-            self.audio_handler.save_audio(temp_file)
             
-            # 处理音频请求
+            temp_file = "temp_capture_stream.wav"
+            sf.write(temp_file, full_audio[:, :1], samplerate)
             self._process_audio_request(temp_file)
             
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             self.signals.error.emit(str(e))
-            self.is_recording = False
+        finally:
+            # COM 清理
+            try:
+                ctypes.windll.ole32.CoUninitialize()
+            except Exception:
+                pass
             
     def _process_audio_request(self, file_path):
         """处理音频请求"""
@@ -373,22 +406,29 @@ class StealthAssistant(QMainWindow):
             
             # 构建音频数据包
             audio_part = self.ai_service.create_audio_part(audio_bytes)
-            prompt_text = "请先简要复述你听到的内容（用【听到】开头），然后针对内容进行回答。"
-            prompt = self.ai_service.create_text_part(prompt_text)
+            prompt = self.ai_service.create_text_part(SYSTEM_PROMPT)
             
             # 清理临时文件
             AudioHandler.cleanup_temp_file(file_path)
             
-            # Flash请求
+            # Flash请求 - 只显示最终 Markdown 渲染结果
             try:
                 self.signals.update_left.emit(
-                    "<div style='background-color:#e6f7ff; padding:8px; border-radius:5px; margin-bottom:5px; margin-top:20px;'><b>⚡ Flash:</b><br>"
+                    "<div style='background-color:#e6f7ff; padding:8px; border-radius:5px; margin-bottom:5px; margin-top:20px;'><b>⚡ Flash:</b> <i>正在生成回复...</i></div>"
                 )
-                self._start_markdown_block()  # 清空缓冲区
+                
+                full_response = ""
                 for chunk in self.ai_service.send_to_flash_stream([prompt, audio_part]):
-                    self.signals.stream_left.emit(chunk)
-                self._flush_markdown_buffer()  # 渲染 Markdown
-                self.signals.update_left.emit("</div>")
+                    full_response += chunk
+                
+                # 通过信号在主线程渲染完整的 Markdown
+                if full_response:
+                    self.signals.update_left.emit(
+                        "<div style='background-color:#e6f7ff; padding:8px; border-radius:5px; margin-bottom:5px;'><b>⚡ Flash:</b>"
+                    )
+                    self.signals.render_markdown.emit(full_response)
+                    self.signals.update_left.emit("</div>")
+                    
             except Exception as e:
                 self.signals.update_left.emit(f"<div style='color:red'>Flash Err: {e}</div>")
                 
@@ -426,23 +466,31 @@ class StealthAssistant(QMainWindow):
             
             self.signals.update_status.emit("正在发送图片...")
             
-            prompt_text = "请分析这张屏幕截图的内容。"
-            prompt = self.ai_service.create_text_part(prompt_text)
+            prompt = self.ai_service.create_text_part(SYSTEM_PROMPT)
             image_part = self.ai_service.create_image_part(img_bytes)
             
             html_msg = "<div style='color:#009688; margin-top:10px;'><b>🖼️ [发送截图]</b></div>"
             self.signals.update_left.emit(html_msg)
                 
-            # Flash请求
+            # Flash请求 - 只显示最终 Markdown 渲染结果
             try:
                 self.signals.update_left.emit(
-                    "<div style='background-color:#e6f7ff; padding:8px; border-radius:5px; margin-bottom:5px;'><b>⚡ Flash:</b><br>"
+                    "<div style='background-color:#e6f7ff; padding:8px; border-radius:5px; margin-bottom:5px;'><b>⚡ Flash:</b> <i>正在分析图片...</i></div>"
                 )
-                self._start_markdown_block()  # 清空缓冲区
+                
+                # 流式积累文本（不实时显示）
+                full_response = ""
                 for chunk in self.ai_service.send_to_flash_stream([prompt, image_part]):
-                    self.signals.stream_left.emit(chunk)
-                self._flush_markdown_buffer()  # 渲染 Markdown
-                self.signals.update_left.emit("</div>")
+                    full_response += chunk
+                
+                # 通过信号在主线程渲染完整的 Markdown
+                if full_response:
+                    self.signals.update_left.emit(
+                        "<div style='background-color:#e6f7ff; padding:8px; border-radius:5px; margin-bottom:5px;'><b>⚡ Flash:</b>"
+                    )
+                    self.signals.render_markdown.emit(full_response)
+                    self.signals.update_left.emit("</div>")
+                    
             except Exception as e:
                 self.signals.update_left.emit(f"<div style='color:red'>Flash Err: {e}</div>")
                 
@@ -467,10 +515,12 @@ class StealthAssistant(QMainWindow):
         self.text_area.insertHtml(html)
         self.text_area.ensureCursorVisible()
 
-
     def _append_stream(self, text):
-        """流式添加文本到缓冲区（Markdown格式）"""
-        self._markdown_buffer += text
+        formatted_text = text.replace("\n", "<br>")
+        cursor = self.text_area.textCursor()
+        cursor.movePosition(QTextCursor.End)
+        self.text_area.setTextCursor(cursor)
+        self.text_area.insertHtml(formatted_text)
         
     def _flush_markdown_buffer(self):
         """将缓冲区的 Markdown 转换为 HTML 并显示"""
@@ -482,6 +532,12 @@ class StealthAssistant(QMainWindow):
     def _start_markdown_block(self):
         """开始新的 Markdown 块（清空缓冲区）"""
         self._markdown_buffer = ""
+    
+    def _render_markdown_content(self, md_text):
+        """在主线程中渲染 Markdown 内容（通过信号调用，线程安全）"""
+        if md_text:
+            html = markdown_to_html(md_text)
+            self._append_html(html)
         
     def _update_status_label(self, text):
         """更新状态标签"""

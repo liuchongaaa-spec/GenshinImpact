@@ -14,7 +14,7 @@ import sys
 import ctypes
 from ctypes import wintypes
 import random
-from config import DISGUISE_TITLES
+from AIOverlay.config import DISGUISE_TITLES
 
 
 class StealthManager:

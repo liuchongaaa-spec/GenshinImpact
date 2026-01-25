@@ -31,3 +31,7 @@ class WorkerSignals(QObject):
     
     # 音量更新信号
     volume_update = pyqtSignal(float)
+    
+    # 渲染 Markdown 信号 (在主线程中安全渲染)
+    render_markdown = pyqtSignal(str)
+

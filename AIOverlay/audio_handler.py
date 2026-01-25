@@ -6,7 +6,7 @@ import numpy as np
 import soundcard as sc
 import soundfile as sf
 import os
-from config import AUDIO_SAMPLE_RATE, AUDIO_CHUNK_FRAMES
+from AIOverlay.config import AUDIO_SAMPLE_RATE, AUDIO_CHUNK_FRAMES
 
 
 class AudioHandler:
@@ -16,7 +16,6 @@ class AudioHandler:
         """初始化音频处理器"""
         self.devices = []
         self.current_device = None
-        self.is_recording = False
         self.audio_buffer = []
         
     def get_devices(self) -> list:
@@ -56,37 +55,68 @@ class AudioHandler:
             return True
         return False
         
-    def start_recording(self, volume_callback=None):
+    def record_blocking(self, should_continue_fn, on_chunk_fn=None):
         """
-        开始录音
-        
         Args:
-            volume_callback: 音量回调函数，接收音量值(0-1)
+            should_continue_fn: 无参函数，返回 True 继续录音，False 停止
+            on_chunk_fn: 可选，接收音量值 (float, 0-1) 的回调函数
             
-        Yields:
-            numpy.ndarray: 音频数据块
+        Returns:
+            bool: 是否成功录制到音频
         """
         if self.current_device is None:
             raise ValueError("No device selected")
             
-        self.is_recording = True
         self.audio_buffer = []
         
-        with self.current_device.recorder(samplerate=AUDIO_SAMPLE_RATE) as mic:
-            while self.is_recording:
-                data = mic.record(numframes=AUDIO_CHUNK_FRAMES)
-                self.audio_buffer.append(data)
-                
-                # 计算并回调音量
-                if volume_callback:
-                    volume = self.calculate_volume(data)
-                    volume_callback(volume)
+        import sys
+        com_initialized = False
+        if sys.platform == "win32":
+            try:
+                import pythoncom
+                pythoncom.CoInitialize()
+                com_initialized = True
+            except ImportError:
+                # 如果没有 pythoncom，尝试使用 comtypes
+                try:
+                    import comtypes
+                    comtypes.CoInitialize()
+                    com_initialized = True
+                except ImportError:
+                    pass
+        
+        try:
+            with self.current_device.recorder(samplerate=AUDIO_SAMPLE_RATE) as mic:
+                while should_continue_fn():
+                    data = mic.record(numframes=AUDIO_CHUNK_FRAMES)
+                    self.audio_buffer.append(data)
                     
-                yield data
-                
-    def stop_recording(self):
-        """停止录音"""
-        self.is_recording = False
+                    # 计算并回调音量
+                    if on_chunk_fn:
+                        volume = self.calculate_volume(data)
+                        on_chunk_fn(volume)
+            
+            return len(self.audio_buffer) > 0
+            
+        except Exception as e:
+            print(f"录音错误: {e}")
+            return False
+        finally:
+            # Windows COM 清理
+            if com_initialized:
+                try:
+                    if sys.platform == "win32":
+                        try:
+                            import pythoncom
+                            pythoncom.CoUninitialize()
+                        except ImportError:
+                            try:
+                                import comtypes
+                                comtypes.CoUninitialize()
+                            except ImportError:
+                                pass
+                except Exception:
+                    pass
         
     def get_recorded_audio(self) -> np.ndarray:
         """

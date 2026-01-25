@@ -47,9 +47,9 @@ GLOBAL_HOTKEY = "alt+q"  # 隐藏/显示快捷键 (左手单手操作)
 # ================= 模型配置 =================
 # Flash 模型列表 (快速响应)
 FLASH_MODELS = [
-    ("Gemini 2.5 Flash", "gemini-2.5-flash"),
-    ("Gemini 3 Flash Preview", "gemini-3-flash-preview"),
     ("Gemini Flash Latest", "gemini-flash-latest"),
+    ("Gemini 3 Flash Preview", "gemini-3-flash-preview"),
+    ("Gemini 2.5 Flash", "gemini-2.5-flash"),
 ]
 
 # ================= 模式常量 =================
@@ -66,7 +66,7 @@ DISGUISE_TITLES = [
 
 # ================= 音频配置 =================
 AUDIO_SAMPLE_RATE = 44100
-AUDIO_CHUNK_FRAMES = AUDIO_SAMPLE_RATE // 5  # 每0.2秒一个chunk
+AUDIO_CHUNK_FRAMES = AUDIO_SAMPLE_RATE // 20  # 每0.05秒(50ms)一个chunk，音量更灵敏
 
 # ================= UI配置 =================
 WINDOW_DEFAULT_WIDTH = 950

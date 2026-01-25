@@ -4,7 +4,7 @@ AI服务模块 - 封装所有与Gemini AI的交互
 """
 from google import genai
 from google.genai import types
-from config import GEMINI_API_KEY, SYSTEM_PROMPT
+from AIOverlay.config import GEMINI_API_KEY, SYSTEM_PROMPT
 
 
 class AIService:
@@ -117,14 +117,13 @@ class AIService:
             client = genai.Client(api_key=api_key)
             # 使用 models.list() 测试连接，不消耗配额
             models = list(client.models.list())
-            # 如果能获取到模型列表，说明连接成功
+
             if models:
                 return
         except Exception as e:
             error_msg = str(e)
-            # 429 表示配额用完，但 API Key 是有效的
             if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
-                return  # API Key 有效，只是配额用完了
+                return
             elif "API key not valid" in error_msg or "invalid" in error_msg.lower():
                 raise InitializationError("API Key 无效，请检查配置")
             elif "network" in error_msg.lower() or "connection" in error_msg.lower():
