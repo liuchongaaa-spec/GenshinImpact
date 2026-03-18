@@ -7,31 +7,30 @@ from PyQt5.QtCore import pyqtSignal, QObject
 
 class WorkerSignals(QObject):
     """工作线程信号集"""
-    
-    # 更新左侧面板(Flash)
-    update_left = pyqtSignal(str)
-    
-    # 更新右侧面板(Pro)
-    update_right = pyqtSignal(str)
-    
-    # 流式更新左侧
-    stream_left = pyqtSignal(str)
-    
-    # 流式更新右侧
-    stream_right = pyqtSignal(str)
-    
+
+    # 更新输出区域 (HTML)
+    update_output = pyqtSignal(str)
+
+    # 流式更新 (原始文本)
+    stream_output = pyqtSignal(str)
+
     # 更新状态栏
     update_status = pyqtSignal(str)
-    
+
     # 错误信号
     error = pyqtSignal(str)
-    
+
     # 切换可见性
     toggle_visible = pyqtSignal()
-    
-    # 音量更新信号
-    volume_update = pyqtSignal(float)
-    
-    # 渲染 Markdown 信号 (在主线程中安全渲染)
-    render_markdown = pyqtSignal(str)
 
+    # 截屏请求
+    screenshot_requested = pyqtSignal()
+
+    # 窗口移动 (正数=右移, 负数=左移)
+    move_window = pyqtSignal(int)
+
+    # 内容滚动 (正数=下滚, 负数=上滚)
+    scroll_content = pyqtSignal(int)
+
+    # 退出程序
+    exit_app = pyqtSignal()

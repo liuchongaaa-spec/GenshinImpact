@@ -1,59 +1,44 @@
 # -*- coding: utf-8 -*-
 """
-配置模块 - 集中管理所有配置项
+配置模块 - 统一在 config.py 中配置，不再读取外部 JSON
 """
 import os
 from AIOverlay.utils.exceptions import InitializationError
 
-# ================= 外部配置文件路径 =================
+# ================= 外部密钥文件路径 =================
 EXTERNAL_CONFIG_DIR = r"D:\tmp"
 API_KEY_FILE = os.path.join(EXTERNAL_CONFIG_DIR, "GeminiAPIKey.txt")
 SYSTEM_PROMPT_FILE = os.path.join(EXTERNAL_CONFIG_DIR, "SYSTEM_PROMPT.txt")
 
-def load_external_config():
-    """从外部文件加载配置"""
-    global GEMINI_API_KEY, SYSTEM_PROMPT
-    
-    # 读取 API Key
-    if not os.path.exists(API_KEY_FILE):
-        raise InitializationError(f"请配置 API Key !")
-    
-    with open(API_KEY_FILE, 'r', encoding='utf-8') as f:
-        GEMINI_API_KEY = f.read().strip()
-    
-    if not GEMINI_API_KEY:
-        raise InitializationError("请配置 API Key !")
-    
-    # 读取系统提示词
-    if not os.path.exists(SYSTEM_PROMPT_FILE):
-        raise InitializationError(f"请配置系统提示词！")
-    
-    with open(SYSTEM_PROMPT_FILE, 'r', encoding='utf-8') as f:
-        SYSTEM_PROMPT = f.read().strip()
-    
-    if not SYSTEM_PROMPT:
-        raise InitializationError("请配置系统提示词！")
-
-# 初始化配置变量
-GEMINI_API_KEY = None
-SYSTEM_PROMPT = None
-
-# 模块加载时自动读取配置
-load_external_config()
-
-# ================= 快捷键配置 =================
-GLOBAL_HOTKEY = "alt+q"  # 隐藏/显示快捷键 (左手单手操作)
-
-# ================= 模型配置 =================
-# Flash 模型列表 (快速响应)
-FLASH_MODELS = [
-    ("Gemini Flash Latest", "gemini-flash-latest"),
-    ("Gemini 3 Flash Preview", "gemini-3-flash-preview"),
-    ("Gemini 2.5 Flash", "gemini-2.5-flash"),
-]
-
-# ================= 模式常量 =================
-# 仅保留 Flash 模式，移除其他模式定义
+# ================= 核心配置 =================
+# 直接在此处修改配置，重启生效
+OVERLAY_CONFIG = {
+    "window": {
+        "x": 600,           # 窗口左上角 X 坐标
+        "y": 0,           # 窗口左上角 Y 坐标
+        "width": 600,        # 窗口宽度
+        "height": 800,       # 窗口高度
+        "opacity": 0.7      # 窗口透明度 (0.0 - 1.0)
+    },
+    "text": {
+        "font_color": "#008000",  # 深灰色文字，适合亮色背景
+        "bg_color": "rgba(255, 255, 255, 0.7)", # 半透明白色背景
+        "font_size": 10           # 字体大小
+    },
+    "hotkeys": {
+        "toggle_visible": "alt+q",
+        "screenshot": "alt+s",
+        "move_left": "alt+left",
+        "move_right": "alt+right",
+        "scroll_up": "alt+up",
+        "scroll_down": "alt+down",
+        "exit": "alt+shift+q"
+    },
+    "proxy": "http://127.0.0.1:7897", # 网络代理
+    "scroll_step": 80,
+    "move_step": 50,
+    "model": "gemini-2.5-flash"
+}
 
 # ================= 伪装配置 =================
 DISGUISE_TITLES = [
@@ -64,12 +49,44 @@ DISGUISE_TITLES = [
     "Windows 安全中心",
 ]
 
-# ================= 音频配置 =================
-AUDIO_SAMPLE_RATE = 44100
-AUDIO_CHUNK_FRAMES = AUDIO_SAMPLE_RATE // 20  # 每0.05秒(50ms)一个chunk，音量更灵敏
 
-# ================= UI配置 =================
-WINDOW_DEFAULT_WIDTH = 950
-WINDOW_DEFAULT_HEIGHT = 750
-WINDOW_MIN_WIDTH = 400
-WINDOW_MIN_HEIGHT = 300
+def _load_external_secrets():
+    """从外部文件加载 API Key 和 System Prompt"""
+    global GEMINI_API_KEY, SYSTEM_PROMPT
+
+    # 读取 API Key
+    if not os.path.exists(API_KEY_FILE):
+        raise InitializationError("请配置 API Key !")
+
+    with open(API_KEY_FILE, 'r', encoding='utf-8') as f:
+        GEMINI_API_KEY = f.read().strip()
+
+    if not GEMINI_API_KEY:
+        raise InitializationError("请配置 API Key !")
+
+    # 读取系统提示词
+    if not os.path.exists(SYSTEM_PROMPT_FILE):
+        raise InitializationError("请配置系统提示词！")
+
+    with open(SYSTEM_PROMPT_FILE, 'r', encoding='utf-8') as f:
+        SYSTEM_PROMPT = f.read().strip()
+
+    if not SYSTEM_PROMPT:
+        raise InitializationError("请配置系统提示词！")
+
+
+# ================= 初始化 =================
+GEMINI_API_KEY = None
+SYSTEM_PROMPT = None
+
+# 加载密钥
+_load_external_secrets()
+
+# 便捷访问变量
+WINDOW_CONFIG = OVERLAY_CONFIG["window"]
+TEXT_CONFIG = OVERLAY_CONFIG["text"]
+HOTKEY_CONFIG = OVERLAY_CONFIG["hotkeys"]
+PROXY_URL = OVERLAY_CONFIG.get("proxy", "")
+SCROLL_STEP = OVERLAY_CONFIG["scroll_step"]
+MOVE_STEP = OVERLAY_CONFIG["move_step"]
+MODEL_ID = OVERLAY_CONFIG["model"]

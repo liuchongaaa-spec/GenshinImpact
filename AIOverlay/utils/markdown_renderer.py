@@ -52,119 +52,117 @@ def markdown_to_html(md_text: str) -> str:
     return styled_html
 
 
-def get_markdown_css() -> str:
+def get_markdown_css(font_color: str = "#333", font_size: int = 11, bg_color: str = "transparent") -> str:
     """
     获取 Markdown 渲染的 CSS 样式
     
+    Args:
+        font_color: 文字颜色
+        font_size: 字体大小
+        bg_color: 背景颜色
+        
     Returns:
         str: CSS 样式字符串
     """
-    return """
+    return f"""
     <style>
-    .markdown-content {
+    .markdown-content {{
         font-family: 'Segoe UI', Arial, sans-serif;
-        font-size: 11px;
-        line-height: 1.5;
-        color: #333;
-    }
+        font-size: {font_size}px;
+        line-height: 1.6;
+        color: {font_color};
+    }}
     
-    .markdown-content h1, .markdown-content h2, .markdown-content h3 {
-        color: #2c3e50;
-        margin-top: 10px;
-        margin-bottom: 5px;
+    .markdown-content h1, .markdown-content h2, .markdown-content h3 {{
+        color: {font_color};
+        margin-top: 12px;
+        margin-bottom: 6px;
         font-weight: 600;
-    }
+    }}
     
-    .markdown-content h1 { font-size: 14px; border-bottom: 2px solid #3498db; padding-bottom: 3px; }
-    .markdown-content h2 { font-size: 13px; border-bottom: 1px solid #bdc3c7; padding-bottom: 2px; }
-    .markdown-content h3 { font-size: 12px; }
+    .markdown-content h1 {{ font-size: {int(font_size * 1.3)}px; border-bottom: 2px solid {font_color}44; padding-bottom: 3px; }}
+    .markdown-content h2 {{ font-size: {int(font_size * 1.2)}px; border-bottom: 1px solid {font_color}22; padding-bottom: 2px; }}
+    .markdown-content h3 {{ font-size: {int(font_size * 1.1)}px; }}
     
-    .markdown-content p {
-        margin: 5px 0;
-    }
+    .markdown-content p {{
+        margin: 6px 0;
+    }}
     
-    .markdown-content code {
-        background-color: #f4f4f4;
-        border: 1px solid #ddd;
+    .markdown-content code {{
+        background-color: rgba(0, 0, 0, 0.05);
+        border: 1px solid rgba(0, 0, 0, 0.1);
         border-radius: 3px;
         padding: 1px 4px;
         font-family: 'Consolas', 'Monaco', monospace;
-        font-size: 11px;
+        font-size: {max(9, font_size - 1)}px;
         color: #c7254e;
-    }
+    }}
     
-    .markdown-content pre {
-        background-color: #f8f8f8;
-        border: 1px solid #ddd;
+    .markdown-content pre {{
+        background-color: rgba(0, 0, 0, 0.03);
+        border: 1px solid rgba(0, 0, 0, 0.08);
         border-radius: 4px;
-        padding: 8px;
+        padding: 10px;
         overflow-x: auto;
-        margin: 8px 0;
-    }
+        margin: 10px 0;
+    }}
     
-    .markdown-content pre code {
+    .markdown-content pre code {{
         background: none;
         border: none;
         padding: 0;
-        color: #333;
-        font-size: 11px;
+        color: {font_color};
+        font-size: {max(9, font_size - 1)}px;
         line-height: 1.4;
-    }
+    }}
     
-    .markdown-content ul, .markdown-content ol {
-        margin: 5px 0;
-        padding-left: 20px;
-    }
+    .markdown-content ul, .markdown-content ol {{
+        margin: 6px 0;
+        padding-left: 22px;
+    }}
     
-    .markdown-content li {
-        margin: 2px 0;
-    }
+    .markdown-content li {{
+        margin: 3px 0;
+    }}
     
-    .markdown-content blockquote {
-        border-left: 3px solid #3498db;
-        background-color: #f0f7fb;
-        padding: 5px 8px;
-        margin: 8px 0;
-        color: #555;
-    }
+    .markdown-content blockquote {{
+        border-left: 4px solid {font_color}66;
+        background-color: rgba(0, 0, 0, 0.02);
+        padding: 6px 10px;
+        margin: 10px 0;
+        color: {font_color}BB;
+    }}
     
-    .markdown-content table {
+    .markdown-content table {{
         border-collapse: collapse;
         width: 100%;
-        margin: 8px 0;
-    }
+        margin: 10px 0;
+    }}
     
-    .markdown-content th, .markdown-content td {
-        border: 1px solid #ddd;
-        padding: 5px;
+    .markdown-content th, .markdown-content td {{
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        padding: 6px;
         text-align: left;
-    }
+    }}
     
-    .markdown-content th {
-        background-color: #f2f2f2;
+    .markdown-content th {{
+        background-color: rgba(0, 0, 0, 0.04);
         font-weight: 600;
-    }
+    }}
     
-    .markdown-content strong {
+    .markdown-content strong {{
         font-weight: 600;
-        color: #2c3e50;
-    }
+        color: {font_color};
+    }}
     
-    .markdown-content em {
+    .markdown-content em {{
         font-style: italic;
-        color: #555;
-    }
+        color: {font_color}CC;
+    }}
     
-    /* Pygments 代码高亮样式 */
-    .markdown-content .highlight {
-        background: #f8f8f8;
-    }
-    
-    .markdown-content .highlight .k { color: #0000ff; font-weight: bold; }  /* Keyword */
-    .markdown-content .highlight .s { color: #a31515; }  /* String */
-    .markdown-content .highlight .c { color: #008000; font-style: italic; }  /* Comment */
-    .markdown-content .highlight .n { color: #000000; }  /* Name */
-    .markdown-content .highlight .o { color: #000000; }  /* Operator */
-    .markdown-content .highlight .m { color: #09885a; }  /* Number */
+    /* Pygments 代码高亮样式 - 尽量保持低对比度以免刺眼 */
+    .markdown-content .highlight {{
+        background: transparent;
+    }}
     </style>
     """
