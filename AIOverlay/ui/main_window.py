@@ -160,10 +160,11 @@ class StealthAssistant(QMainWindow):
         self.text_area.setReadOnly(True)
         self.text_area.setPlaceholderText("Ready. Press Alt+S to capture screen.")
 
-        # 注入 Markdown CSS (同步配置的字体颜色和大小)
+        # 注入 Markdown CSS (同步配置的字体颜色、大小和行间距)
         css = get_markdown_css(
             font_color=TEXT_CONFIG["font_color"],
-            font_size=TEXT_CONFIG["font_size"]
+            font_size=TEXT_CONFIG["font_size"],
+            line_height=TEXT_CONFIG.get("line_height", 1.5)
         ).replace("<style>", "").replace("</style>", "")
         self.text_area.document().setDefaultStyleSheet(css)
 

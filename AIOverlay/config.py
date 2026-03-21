@@ -15,23 +15,24 @@ SYSTEM_PROMPT_FILE = os.path.join(EXTERNAL_CONFIG_DIR, "SYSTEM_PROMPT.txt")
 OVERLAY_CONFIG = {
     "window": {
         "x": 600,           # 窗口左上角 X 坐标
-        "y": 0,           # 窗口左上角 Y 坐标
+        "y": 100,           # 窗口左上角 Y 坐标
         "width": 600,        # 窗口宽度
-        "height": 800,       # 窗口高度
+        "height": 700,       # 窗口高度
         "opacity": 0.7      # 窗口透明度 (0.0 - 1.0)
     },
     "text": {
-        "font_color": "#008000",  # 深灰色文字，适合亮色背景
+        "font_color": "#008000",  # 绿色文字
         "bg_color": "rgba(255, 255, 255, 0.7)", # 半透明白色背景
-        "font_size": 10           # 字体大小
+        "font_size": 10,           # 字体大小
+        "line_height": 1.1         # 行间距 (1.0 - 2.0)
     },
     "hotkeys": {
-        "toggle_visible": "alt+q",
+        "toggle_visible": "alt+m",
         "screenshot": "alt+s",
-        "move_left": "alt+left",
-        "move_right": "alt+right",
-        "scroll_up": "alt+up",
-        "scroll_down": "alt+down",
+        "move_left": "alt+shift+left",
+        "move_right": "alt+shift+right",
+        "scroll_up": "alt+k",
+        "scroll_down": "alt+l",
         "exit": "alt+shift+q"
     },
     "proxy": "http://127.0.0.1:7897", # 网络代理

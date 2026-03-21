@@ -52,24 +52,16 @@ def markdown_to_html(md_text: str) -> str:
     return styled_html
 
 
-def get_markdown_css(font_color: str = "#333", font_size: int = 11, bg_color: str = "transparent") -> str:
+def get_markdown_css(font_color: str = "#333", font_size: int = 11, bg_color: str = "transparent", line_height: float = 1.5) -> str:
     """
     获取 Markdown 渲染的 CSS 样式
-    
-    Args:
-        font_color: 文字颜色
-        font_size: 字体大小
-        bg_color: 背景颜色
-        
-    Returns:
-        str: CSS 样式字符串
     """
     return f"""
     <style>
     .markdown-content {{
         font-family: 'Segoe UI', Arial, sans-serif;
         font-size: {font_size}px;
-        line-height: 1.6;
+        line-height: {line_height};
         color: {font_color};
     }}
     
