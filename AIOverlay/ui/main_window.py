@@ -3,6 +3,7 @@
 主窗口模块 - 纯快捷键驱动、鼠标穿透的隐蔽覆盖层
 """
 
+import os
 import io
 import sys
 import threading
@@ -17,7 +18,7 @@ import keyboard
 
 from AIOverlay.config import (
     WINDOW_CONFIG, TEXT_CONFIG, HOTKEY_CONFIG,
-    SCROLL_STEP, MOVE_STEP
+    SCROLL_STEP, MOVE_STEP, LOAD_TEST_FILE, TEST_FILE_PATH
 )
 from AIOverlay.ai_service import AIService
 from AIOverlay.stealth import stealth_manager
@@ -53,6 +54,21 @@ class StealthAssistant(QMainWindow):
         self._apply_stealth()
         self._setup_hotkeys()
         self._setup_tray()
+        
+        # 启动时加载初始内容
+        self._load_initial_content()
+
+    def _load_initial_content(self):
+        """如果开启了配置，则加载初始测试文件内容"""
+        if LOAD_TEST_FILE and os.path.exists(TEST_FILE_PATH):
+            try:
+                with open(TEST_FILE_PATH, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                if content.strip():
+                    html = markdown_to_html(content)
+                    self.signals.update_output.emit(html)
+            except Exception as e:
+                print(f"无法加载初始文件: {e}")
 
     def _connect_signals(self):
         """连接信号到槽"""
@@ -160,11 +176,12 @@ class StealthAssistant(QMainWindow):
         self.text_area.setReadOnly(True)
         self.text_area.setPlaceholderText("Ready. Press Alt+S to capture screen.")
 
-        # 注入 Markdown CSS (同步配置的字体颜色、大小和行间距)
+        # 注入 Markdown CSS (同步配置的字体颜色、大小、行间距和透明度)
         css = get_markdown_css(
             font_color=TEXT_CONFIG["font_color"],
             font_size=TEXT_CONFIG["font_size"],
-            line_height=TEXT_CONFIG.get("line_height", 1.5)
+            line_height=TEXT_CONFIG.get("line_height", 1.5),
+            text_opacity=TEXT_CONFIG.get("text_opacity", 1.0)
         ).replace("<style>", "").replace("</style>", "")
         self.text_area.document().setDefaultStyleSheet(css)
 
@@ -241,9 +258,10 @@ class StealthAssistant(QMainWindow):
             prompt = self.ai_service.create_text_part(prompt_text)
             image_part = self.ai_service.create_image_part(img_bytes)
 
-            # 发送截图标记
+            # 发送截图标记与前置填充
+            padding = "<br>" * TEXT_CONFIG.get("padding_lines", 0)
             self.signals.update_output.emit(
-                "<div style='color:#888; font-size:10px; margin-top:15px;'>[screenshot captured]</div>"
+                f"{padding}<div style='color:#888; font-size:10px; margin-top:15px;'>[screenshot captured]</div>"
             )
 
             # 流式请求
@@ -251,6 +269,9 @@ class StealthAssistant(QMainWindow):
             for chunk in self.ai_service.send_stream([prompt, image_part]):
                 self.signals.stream_output.emit(chunk)
             self._flush_markdown_buffer()
+            
+            # 后置填充
+            self.signals.update_output.emit(padding)
 
             self.signals.update_status.emit("ready")
 

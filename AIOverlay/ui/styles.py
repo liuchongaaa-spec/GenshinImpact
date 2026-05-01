@@ -23,7 +23,7 @@ def build_main_style(font_color: str = "#333333", bg_color: str = "rgba(255, 255
         QTextEdit {{
             background-color: {bg_color};
             color: {font_color};
-            border: 1px solid rgba(0, 0, 0, 0.05);
+            border: none;
             border-radius: 4px;
             font-family: "{FONT_FAMILY}", "Cascadia Code", "Consolas", monospace;
             font-size: {font_size}px;

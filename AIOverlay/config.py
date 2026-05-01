@@ -18,27 +18,31 @@ OVERLAY_CONFIG = {
         "y": 100,           # 窗口左上角 Y 坐标
         "width": 600,        # 窗口宽度
         "height": 700,       # 窗口高度
-        "opacity": 0.7      # 窗口透明度 (0.0 - 1.0)
+        "opacity": 0.3      # 窗口透明度 (0.0 - 1.0)
     },
     "text": {
-        "font_color": "#008000",  # 绿色文字
-        "bg_color": "rgba(255, 255, 255, 0.7)", # 半透明白色背景
+        "font_color": "#3690F7",  # 绿色文字
+        "bg_color": "transparent", # 为空或 transparent 就不显示背景框了
         "font_size": 10,           # 字体大小
-        "line_height": 1.1         # 行间距 (1.0 - 2.0)
+        "line_height": 1.1,        # 行间距 (1.0 - 2.0)
+        "text_opacity": 0.05,        # 文字透明度 (0.0 - 1.0)
+        "padding_lines": 20        # 回答前后的空行数量
     },
     "hotkeys": {
         "toggle_visible": "alt+m",
         "screenshot": "alt+s",
-        "move_left": "alt+shift+left",
-        "move_right": "alt+shift+right",
+        "move_left": "alt+h",
+        "move_right": "alt+j",
         "scroll_up": "alt+k",
         "scroll_down": "alt+l",
         "exit": "alt+shift+q"
     },
+    "load_test_file": True,           # 启动时是否加载测试文件
+    "test_file_path": os.path.join(os.path.dirname(__file__), "test.txt"), # 测试文件路径
     "proxy": "http://127.0.0.1:7897", # 网络代理
     "scroll_step": 80,
     "move_step": 50,
-    "model": "gemini-2.5-flash"
+    "model": "gemini-3-flash-preview"
 }
 
 # ================= 伪装配置 =================
@@ -91,3 +95,5 @@ PROXY_URL = OVERLAY_CONFIG.get("proxy", "")
 SCROLL_STEP = OVERLAY_CONFIG["scroll_step"]
 MOVE_STEP = OVERLAY_CONFIG["move_step"]
 MODEL_ID = OVERLAY_CONFIG["model"]
+LOAD_TEST_FILE = OVERLAY_CONFIG.get("load_test_file", False)
+TEST_FILE_PATH = OVERLAY_CONFIG.get("test_file_path", "")
