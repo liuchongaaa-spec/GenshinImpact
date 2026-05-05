@@ -56,25 +56,40 @@ def get_markdown_css(font_color: str = "#333", font_size: int = 11, bg_color: st
     """
     获取 Markdown 渲染的 CSS 样式
     """
+    def get_color(base_color, base_opacity, alpha_mult=1.0):
+        color = base_color.lstrip('#')
+        if len(color) == 3:
+            color = ''.join(c + c for c in color)
+        if len(color) == 6:
+            r, g, b = tuple(int(color[i:i+2], 16) for i in (0, 2, 4))
+            return f"rgba({r}, {g}, {b}, {base_opacity * alpha_mult:.3f})"
+        return base_color
+
+    main_color = get_color(font_color, text_opacity, 1.0)
+    border_color_strong = get_color(font_color, text_opacity, 0.27) # 原 44
+    border_color_weak = get_color(font_color, text_opacity, 0.13)   # 原 22
+    quote_border = get_color(font_color, text_opacity, 0.4)         # 原 66
+    quote_text = get_color(font_color, text_opacity, 0.73)          # 原 BB
+    em_text = get_color(font_color, text_opacity, 0.8)              # 原 CC
+
     return f"""
     <style>
     .markdown-content {{
         font-family: 'Segoe UI', Arial, sans-serif;
         font-size: {font_size}px;
         line-height: {line_height};
-        color: {font_color};
-        opacity: {text_opacity};
+        color: {main_color};
     }}
     
     .markdown-content h1, .markdown-content h2, .markdown-content h3 {{
-        color: {font_color};
+        color: {main_color};
         margin-top: 12px;
         margin-bottom: 6px;
         font-weight: 600;
     }}
     
-    .markdown-content h1 {{ font-size: {int(font_size * 1.3)}px; border-bottom: 2px solid {font_color}44; padding-bottom: 3px; }}
-    .markdown-content h2 {{ font-size: {int(font_size * 1.2)}px; border-bottom: 1px solid {font_color}22; padding-bottom: 2px; }}
+    .markdown-content h1 {{ font-size: {int(font_size * 1.3)}px; padding-bottom: 3px; }}
+    .markdown-content h2 {{ font-size: {int(font_size * 1.2)}px; padding-bottom: 2px; }}
     .markdown-content h3 {{ font-size: {int(font_size * 1.1)}px; }}
     
     .markdown-content p {{
@@ -82,31 +97,31 @@ def get_markdown_css(font_color: str = "#333", font_size: int = 11, bg_color: st
     }}
     
     .markdown-content code {{
-        background-color: rgba(0, 0, 0, 0.05);
-        border: 1px solid rgba(0, 0, 0, 0.1);
-        border-radius: 3px;
-        padding: 1px 4px;
+        background: transparent;
+        border: none;
+        padding: 0 2px;
         font-family: 'Consolas', 'Monaco', monospace;
         font-size: {max(9, font_size - 1)}px;
-        color: #c7254e;
+        color: {main_color};
     }}
     
     .markdown-content pre {{
-        background-color: rgba(0, 0, 0, 0.03);
-        border: 1px solid rgba(0, 0, 0, 0.08);
-        border-radius: 4px;
-        padding: 10px;
-        overflow-x: auto;
-        margin: 10px 0;
+        background: transparent;
+        border: none;
+        padding: 4px 0;
+        margin: 6px 0;
+        white-space: pre-wrap;       /* 强制代码自动换行 */
+        word-wrap: break-word;       /* 允许超长字符串截断换行 */
     }}
     
     .markdown-content pre code {{
         background: none;
         border: none;
         padding: 0;
-        color: {font_color};
+        color: {main_color};
         font-size: {max(9, font_size - 1)}px;
         line-height: 1.4;
+        white-space: pre-wrap;
     }}
     
     .markdown-content ul, .markdown-content ol {{
@@ -119,38 +134,39 @@ def get_markdown_css(font_color: str = "#333", font_size: int = 11, bg_color: st
     }}
     
     .markdown-content blockquote {{
-        border-left: 4px solid {font_color}66;
-        background-color: rgba(0, 0, 0, 0.02);
+        border: none;
+        background: transparent;
         padding: 6px 10px;
         margin: 10px 0;
-        color: {font_color}BB;
+        color: {quote_text};
     }}
     
     .markdown-content table {{
         border-collapse: collapse;
         width: 100%;
         margin: 10px 0;
+        border: none;
     }}
     
     .markdown-content th, .markdown-content td {{
-        border: 1px solid rgba(0, 0, 0, 0.1);
+        border: none;
         padding: 6px;
         text-align: left;
     }}
     
     .markdown-content th {{
-        background-color: rgba(0, 0, 0, 0.04);
+        background: transparent;
         font-weight: 600;
     }}
     
     .markdown-content strong {{
         font-weight: 600;
-        color: {font_color};
+        color: {main_color};
     }}
     
     .markdown-content em {{
         font-style: italic;
-        color: {font_color}CC;
+        color: {em_text};
     }}
     
     /* Pygments 代码高亮样式 - 尽量保持低对比度以免刺眼 */

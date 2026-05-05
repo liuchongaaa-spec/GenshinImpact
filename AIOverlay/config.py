@@ -18,14 +18,14 @@ OVERLAY_CONFIG = {
         "y": 100,           # 窗口左上角 Y 坐标
         "width": 600,        # 窗口宽度
         "height": 700,       # 窗口高度
-        "opacity": 0.3      # 窗口透明度 (0.0 - 1.0)
+        "opacity": 0.3      # 窗口透明度 (0.0 - 1.0)]
     },
     "text": {
         "font_color": "#3690F7",  # 绿色文字
         "bg_color": "transparent", # 为空或 transparent 就不显示背景框了
         "font_size": 10,           # 字体大小
         "line_height": 1.1,        # 行间距 (1.0 - 2.0)
-        "text_opacity": 0.05,        # 文字透明度 (0.0 - 1.0)
+        "text_opacity": 0.25,        # 文字透明度 (0.0 - 1.0)
         "padding_lines": 20        # 回答前后的空行数量
     },
     "hotkeys": {
@@ -33,8 +33,8 @@ OVERLAY_CONFIG = {
         "screenshot": "alt+s",
         "move_left": "alt+h",
         "move_right": "alt+j",
-        "scroll_up": "alt+k",
-        "scroll_down": "alt+l",
+        "scroll_up": "alt+l",
+        "scroll_down": "alt+k",
         "exit": "alt+shift+q"
     },
     "load_test_file": True,           # 启动时是否加载测试文件

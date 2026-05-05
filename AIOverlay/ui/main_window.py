@@ -159,9 +159,19 @@ class StealthAssistant(QMainWindow):
         central_widget = QWidget()
         central_widget.setObjectName("MainFrame")
 
+        # 辅助函数：将 #RRGGBB 转换为带透明度的 rgba
+        def get_rgba(color, opacity):
+            c = color.lstrip('#')
+            if len(c) == 3: c = ''.join(x + x for x in c)
+            if len(c) == 6:
+                r, g, b = tuple(int(c[i:i+2], 16) for i in (0, 2, 4))
+                return f"rgba({r}, {g}, {b}, {opacity})"
+            return color
+
         # 应用配置驱动的样式
+        final_font_color = get_rgba(TEXT_CONFIG["font_color"], TEXT_CONFIG.get("text_opacity", 1.0))
         style = build_main_style(
-            font_color=TEXT_CONFIG["font_color"],
+            font_color=final_font_color,
             bg_color=TEXT_CONFIG.get("bg_color", "rgba(255, 255, 255, 0.7)"),
             font_size=TEXT_CONFIG["font_size"]
         )
@@ -175,6 +185,7 @@ class StealthAssistant(QMainWindow):
         self.text_area = QTextEdit()
         self.text_area.setReadOnly(True)
         self.text_area.setPlaceholderText("Ready. Press Alt+S to capture screen.")
+        self.text_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
         # 注入 Markdown CSS (同步配置的字体颜色、大小、行间距和透明度)
         css = get_markdown_css(
