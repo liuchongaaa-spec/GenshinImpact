@@ -30,7 +30,7 @@ OVERLAY_CONFIG = {
     },  
     "hotkeys": {
         "toggle_visible": "caps lock+m",
-        "screenshot": "caps lock+s",
+        "screenshot": "caps lock+d",
         "move_left": "caps lock+h",
         "move_right": "caps lock+j",
         "scroll_up": "caps lock+l",

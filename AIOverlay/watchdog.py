@@ -8,6 +8,7 @@ import sys
 import time
 import subprocess
 import keyboard
+import threading
 
 # 尝试读取配置中的热键
 try:
@@ -51,7 +52,7 @@ def start_main_app():
 def on_restart_hotkey():
     """快捷键触发时的回调"""
     print(f"检测到重启快捷键 ({restart_hotkey})，开始重启...")
-    start_main_app()
+    threading.Thread(target=start_main_app, daemon=True).start()
 
 def main():
     print("="*40)
