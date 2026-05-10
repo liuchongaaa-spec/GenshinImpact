@@ -1,90 +1,56 @@
-def markdown_to_html(md_text: str) -> str:
-    """
-    将 Markdown 文本转换为 HTML
+package practices.practice5;
 
-    Args:
-        md_text: Markdown 格式的文本
-
-    Returns:
-        str: 转换后的 HTML 字符串
-    """
-    if not md_text:
-        return ""
-
-    # 配置 Markdown 扩展
-    extensions = [
-        FencedCodeExtension(),  # 支持 ```代码块```
-        CodeHiliteExtension(    # 代码高亮
-            linenums=False,
-            guess_lang=True,
-            css_class='highlight'
-        ),
-        TableExtension(),       # 支持表格
-        'nl2br',               # 换行转 <br>
-        'sane_lists',          # 更好的列表处理
-    ]
-
-    # 转换 Markdown 到 HTML
-    html = markdown.markdown(
-        md_text,
-        extensions=extensions,
-        output_format='html'
-    )
-
-    # 包装在带样式的 div 中
-    styled_html = f"""
-    <div class="markdown-content">
-        {html}
-    </div>
-    """
-
-    return styled_html
+public class problem23 {
 
 
-def get_markdown_css(font_color: str = "#333", font_size: int = 11, bg_color: str = "transparent", line_height: float = 1.5, text_opacity: float = 1.0) -> str:
-    """
-    获取 Markdown 渲染的 CSS 样式
-    """
-    return f"""
-    <style>
-    .markdown-content {{
-        font-family: 'Segoe UI', Arial, sans-serif;
-        font-size: {font_size}px;
-        line-height: {line_height};
-        color: {font_color};
-        opacity: {text_opacity};
-    }}
+    //TODO  这题还没有理解
+    public static void main(String[] args) {
 
-    .markdown-content h1, .markdown-content h2, .markdown-content h3 {{
-        color: {font_color};
-        margin-top: 12px;
-        margin-bottom: 6px;
-        font-weight: 600;
-    }}
+    }
 
-    .markdown-content h1 {{ font-size: {int(font_size * 1.3)}px; border-bottom: 2px solid {font_color}44; padding-bottom: 3px; }}
-    .markdown-content h2 {{ font-size: {int(font_size * 1.2)}px; border-bottom: 1px solid {font_color}22; padding-bottom: 2px; }}
-    .markdown-content h3 {{ font-size: {int(font_size * 1.1)}px; }}
+    //采用分治的思想
+    public ListNode mergeKLists(ListNode[] lists) {
+        //如果要合并的内容为空，直接返回null
+        if (lists == null || lists.length == 0) {
+            return null;
+        }
 
-    .markdown-content p {{
-        margin: 6px 0;
-    }}
+        //合并第一个到最后一个列表
+        return mergeHelper(lists, 0, lists.length - 1);
+    }
 
-    .markdown-content code {{
-        background-color: rgba(0, 0, 0, 0.05);
-        border: 1px solid rgba(0, 0, 0, 0.1);
-        border-radius: 3px;
-        padding: 1px 4px;
-        font-family: 'Consolas', 'Monaco', monospace;
-        font-size: {max(9, font_size - 1)}px;
-        color: #c7254e;
-    }}
+    //这里是分，把要处理的问题划分到最小的单位为止
+    private ListNode mergeHelper(ListNode[] lists, int left, int right) {
+        //如果分到了只剩一个，那么就直接返回，因为一个的话，它就已经是有序的了
+        if (left == right) {
+            return lists[left];
+        }
 
-    .markdown-content pre {{
-        background-color: rgba(0, 0, 0, 0.03);
-        border: 1px solid rgba(0, 0, 0, 0.08);
-        border-radius: 4px;
-        padding: 10px;
-        overflow-x: auto;
-        margin: 10px 0;
-    }}
+        int mid = (left + right) / 2;
+        //如果还没有分发到最小的单位，那么就继续从中点位置再分
+        ListNode leftList = mergeHelper(lists, left, mid);
+        ListNode rightList = mergeHelper(lists, mid + 1, right);
+
+        //上面的得到的已经是最小的单位了，分完了之后就要治理了
+        return mergeTwoLists(leftList, rightList);
+    }
+
+    private ListNode mergeTwoLists(ListNode l1, ListNode l2) {
+        ListNode dummy = new ListNode(0);
+        ListNode curr = dummy;
+        while (l1 != null && l2 != null) {
+            if (l1.val < l2.val) {
+                curr.next = l1;
+                l1 = l1.next;
+            } else {
+                curr.next = l2;
+                l2 = l2.next;
+            }
+            curr = curr.next;
+        }
+        curr.next = l1 == null ? l2 : l1;
+        return dummy.next;
+    }
+
+
+}

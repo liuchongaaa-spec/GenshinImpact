@@ -97,7 +97,7 @@ class StealthAssistant(QMainWindow):
 
         for key, callback in bindings:
             try:
-                keyboard.add_hotkey(key, callback)
+                keyboard.add_hotkey(key, callback, suppress=True)
             except Exception as e:
                 print(f"快捷键 {key} 注册失败: {e}")
 
@@ -186,6 +186,8 @@ class StealthAssistant(QMainWindow):
         self.text_area.setReadOnly(True)
         self.text_area.setPlaceholderText("Ready. Press Alt+S to capture screen.")
         self.text_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.text_area.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.text_area.setFrameStyle(0)
 
         # 注入 Markdown CSS (同步配置的字体颜色、大小、行间距和透明度)
         css = get_markdown_css(
@@ -269,11 +271,9 @@ class StealthAssistant(QMainWindow):
             prompt = self.ai_service.create_text_part(prompt_text)
             image_part = self.ai_service.create_image_part(img_bytes)
 
-            # 发送截图标记与前置填充
+            # 发送前置填充
             padding = "<br>" * TEXT_CONFIG.get("padding_lines", 0)
-            self.signals.update_output.emit(
-                f"{padding}<div style='color:#888; font-size:10px; margin-top:15px;'>[screenshot captured]</div>"
-            )
+            self.signals.update_output.emit(padding)
 
             # 流式请求
             self._start_markdown_block()
@@ -322,6 +322,7 @@ class StealthAssistant(QMainWindow):
 
     def _show_error(self, err_msg):
         """在输出区域显示错误"""
+        font_color = TEXT_CONFIG.get("font_color", "#ff5555")
         self._append_html(
-            f"<div style='color:#ff5555; font-size:11px;'>Error: {err_msg}</div>"
+            f"<div style='color:{font_color}; font-size:11px;'>Error: {err_msg}</div>"
         )

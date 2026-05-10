@@ -25,17 +25,18 @@ OVERLAY_CONFIG = {
         "bg_color": "transparent", # 为空或 transparent 就不显示背景框了
         "font_size": 10,           # 字体大小
         "line_height": 1.1,        # 行间距 (1.0 - 2.0)
-        "text_opacity": 0.25,        # 文字透明度 (0.0 - 1.0)
+        "text_opacity": 0.20,        # 文字透明度 (0.0 - 1.0)
         "padding_lines": 20        # 回答前后的空行数量
-    },
+    },  
     "hotkeys": {
-        "toggle_visible": "alt+m",
-        "screenshot": "alt+s",
-        "move_left": "alt+h",
-        "move_right": "alt+j",
-        "scroll_up": "alt+l",
-        "scroll_down": "alt+k",
-        "exit": "alt+shift+q"
+        "toggle_visible": "caps lock+m",
+        "screenshot": "caps lock+s",
+        "move_left": "caps lock+h",
+        "move_right": "caps lock+j",
+        "scroll_up": "caps lock+l",
+        "scroll_down": "caps lock+k",
+        "exit": "caps lock+shift+q",
+        "restart": "caps lock+b"
     },
     "load_test_file": True,           # 启动时是否加载测试文件
     "test_file_path": os.path.join(os.path.dirname(__file__), "test.txt"), # 测试文件路径
