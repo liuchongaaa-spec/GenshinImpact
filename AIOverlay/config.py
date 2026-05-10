@@ -25,7 +25,7 @@ OVERLAY_CONFIG = {
         "bg_color": "transparent", # 为空或 transparent 就不显示背景框了
         "font_size": 10,           # 字体大小
         "line_height": 1.1,        # 行间距 (1.0 - 2.0)
-        "text_opacity": 0.20,        # 文字透明度 (0.0 - 1.0)
+        "text_opacity": 1.00,        # 文字透明度 (0.0 - 1.0)
         "padding_lines": 20        # 回答前后的空行数量
     },  
     "hotkeys": {
@@ -36,7 +36,12 @@ OVERLAY_CONFIG = {
         "scroll_up": "caps lock+l",
         "scroll_down": "caps lock+k",
         "exit": "caps lock+shift+q",
-        "restart": "caps lock+b"
+        "restart": "caps lock+b",
+        "audio_capture": "caps lock+u"
+    },
+    "audio": {
+        "buffer_seconds": 10,      # 滚动缓冲区保留的秒数
+        "sample_rate": 16000       # 采样率 (Hz)
     },
     "load_test_file": True,           # 启动时是否加载测试文件
     "test_file_path": os.path.join(os.path.dirname(__file__), "test.txt"), # 测试文件路径
@@ -98,3 +103,4 @@ MOVE_STEP = OVERLAY_CONFIG["move_step"]
 MODEL_ID = OVERLAY_CONFIG["model"]
 LOAD_TEST_FILE = OVERLAY_CONFIG.get("load_test_file", False)
 TEST_FILE_PATH = OVERLAY_CONFIG.get("test_file_path", "")
+AUDIO_CONFIG = OVERLAY_CONFIG.get("audio", {})

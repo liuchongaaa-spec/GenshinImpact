@@ -34,3 +34,6 @@ class WorkerSignals(QObject):
 
     # 退出程序
     exit_app = pyqtSignal()
+
+    # 音频捕获请求
+    audio_capture_requested = pyqtSignal()

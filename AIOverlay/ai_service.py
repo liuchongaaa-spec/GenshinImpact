@@ -118,6 +118,11 @@ class AIService:
         return types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
 
     @staticmethod
+    def create_audio_part(audio_bytes: bytes, mime_type: str = "audio/wav"):
+        """创建音频Part"""
+        return types.Part.from_bytes(data=audio_bytes, mime_type=mime_type)
+
+    @staticmethod
     def test_connection(api_key: str) -> None:
         """
         测试 AI 服务连接

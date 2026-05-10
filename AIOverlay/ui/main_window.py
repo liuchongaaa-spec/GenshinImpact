@@ -18,9 +18,10 @@ import keyboard
 
 from AIOverlay.config import (
     WINDOW_CONFIG, TEXT_CONFIG, HOTKEY_CONFIG,
-    SCROLL_STEP, MOVE_STEP, LOAD_TEST_FILE, TEST_FILE_PATH
+    SCROLL_STEP, MOVE_STEP, LOAD_TEST_FILE, TEST_FILE_PATH, AUDIO_CONFIG
 )
 from AIOverlay.ai_service import AIService
+from AIOverlay.audio_capture import AudioCapture
 from AIOverlay.stealth import stealth_manager
 from AIOverlay.utils.signals import WorkerSignals
 from AIOverlay.utils.markdown_renderer import markdown_to_html, get_markdown_css
@@ -40,12 +41,22 @@ class StealthAssistant(QMainWindow):
         # 截屏锁 (防止重复触发)
         self._screenshot_lock = False
 
+        # 音频捕获锁 (防止重复触发)
+        self._audio_lock = False
+
         # 信号
         self.signals = WorkerSignals()
 
         # 初始化组件
         self.ai_service = AIService()
         self.tray_manager = None
+
+        # 初始化音频缓冲区
+        self.audio_capture = AudioCapture(
+            buffer_seconds=AUDIO_CONFIG.get("buffer_seconds", 45),
+            sample_rate=AUDIO_CONFIG.get("sample_rate", 16000)
+        )
+        self.audio_capture.start()
 
         # 初始化
         self._init_ai()
@@ -81,6 +92,7 @@ class StealthAssistant(QMainWindow):
         self.signals.move_window.connect(self._handle_move_window)
         self.signals.scroll_content.connect(self._handle_scroll_content)
         self.signals.exit_app.connect(self._handle_exit)
+        self.signals.audio_capture_requested.connect(self._handle_audio_capture)
 
     def _setup_hotkeys(self):
         """设置全局快捷键"""
@@ -94,6 +106,13 @@ class StealthAssistant(QMainWindow):
             (hotkeys["scroll_down"], lambda: self.signals.scroll_content.emit(SCROLL_STEP)),
             (hotkeys["exit"], lambda: self.signals.exit_app.emit()),
         ]
+
+        # 音频快捷键 (仅在配置了的情况下注册)
+        audio_key = hotkeys.get("audio_capture")
+        if audio_key:
+            bindings.append(
+                (audio_key, lambda: self.signals.audio_capture_requested.emit())
+            )
 
         for key, callback in bindings:
             try:
@@ -290,6 +309,52 @@ class StealthAssistant(QMainWindow):
             self.signals.error.emit(f"截图处理错误: {e}")
         finally:
             self._screenshot_lock = False
+
+    # ========== 音频捕获功能 ==========
+
+    def _handle_audio_capture(self):
+        """处理音频捕获 (快捷键触发)"""
+        if self._audio_lock:
+            return
+
+        self._audio_lock = True
+        threading.Thread(target=self._bg_audio_capture, daemon=True).start()
+
+    def _bg_audio_capture(self):
+        """后台音频捕获处理"""
+        try:
+            # 从环形缓冲区中切取音频数据
+            audio_bytes = self.audio_capture.get_audio_bytes()
+
+            if not audio_bytes:
+                self.signals.error.emit("音频缓冲区为空，请稍后再试")
+                return
+
+            self.signals.update_status.emit("sending audio...")
+
+            prompt_text = "请分析这段音频内容。"
+            prompt = self.ai_service.create_text_part(prompt_text)
+            audio_part = self.ai_service.create_audio_part(audio_bytes)
+
+            # 前置填充
+            padding = "<br>" * TEXT_CONFIG.get("padding_lines", 0)
+            self.signals.update_output.emit(padding)
+
+            # 流式请求
+            self._start_markdown_block()
+            for chunk in self.ai_service.send_stream([prompt, audio_part]):
+                self.signals.stream_output.emit(chunk)
+            self._flush_markdown_buffer()
+
+            # 后置填充
+            self.signals.update_output.emit(padding)
+
+            self.signals.update_status.emit("ready")
+
+        except Exception as e:
+            self.signals.error.emit(f"音频处理错误: {e}")
+        finally:
+            self._audio_lock = False
 
     # ========== UI更新 ==========
 
