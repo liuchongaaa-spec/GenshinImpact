@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-音频捕获模块 - 系统扬声器回环录制
-使用 WASAPI Loopback 在内存中维护一个滚动缓冲区，
-按需切取最近 N 秒的音频数据，全程不写磁盘。
+音频捕获模块 - 立体声双轨并联录制
+左声道：系统扬声器回环（面试官）
+右声道：系统默认麦克风（候选人）
+全程不写磁盘，按需截取最近 N 秒合成双通道 WAV 数据。
 """
 
 import io
@@ -13,11 +14,11 @@ import soundcard as sc
 
 
 class AudioCapture:
-    """系统音频滚动缓冲区"""
+    """系统音频与麦克风双轨滚动缓冲区"""
 
-    def __init__(self, buffer_seconds: int = 30, sample_rate: int = 16000):
+    def __init__(self, buffer_seconds: int = 45, sample_rate: int = 16000):
         """
-        初始化音频捕获器
+        初始化双轨音频捕获器
 
         Args:
             buffer_seconds: 缓冲区保留的秒数
@@ -25,106 +26,146 @@ class AudioCapture:
         """
         self.sample_rate = sample_rate
         self.buffer_seconds = buffer_seconds
-        self.channels = 1  # 单声道，节省带宽
+        self.channels = 2  # 强制立体声 (Left=Sys, Right=Mic)
 
-        # 环形缓冲区：预分配一个固定大小的 numpy 数组
+        # 环形缓冲区大小
         self._buffer_size = self.sample_rate * self.buffer_seconds
-        self._buffer = np.zeros(self._buffer_size, dtype=np.float32)
-        self._write_pos = 0  # 当前写入位置
+        
+        # 面试官 (系统回环)
+        self._buffer_sys = np.zeros(self._buffer_size, dtype=np.float32)
+        self._write_pos_sys = 0
+        
+        # 候选人 (麦克风)
+        self._buffer_mic = np.zeros(self._buffer_size, dtype=np.float32)
+        self._write_pos_mic = 0
+
         self._lock = threading.Lock()
 
         # 录音线程控制
         self._running = False
-        self._thread = None
+        self._thread_sys = None
+        self._thread_mic = None
 
     def start(self):
-        """启动后台录音线程"""
+        """启动后台双轨录音线程"""
         if self._running:
             return
 
         self._running = True
-        self._thread = threading.Thread(target=self._record_loop, daemon=True)
-        self._thread.start()
-        print(f"🎤 音频缓冲区已启动 (保留最近 {self.buffer_seconds} 秒)")
+        self._thread_sys = threading.Thread(target=self._record_sys_loop, daemon=True)
+        self._thread_mic = threading.Thread(target=self._record_mic_loop, daemon=True)
+        
+        self._thread_sys.start()
+        self._thread_mic.start()
+        print(f"🎤 双轨音频缓冲区已启动 (保留最近 {self.buffer_seconds} 秒立体声)")
 
     def stop(self):
         """停止录音"""
         self._running = False
-        if self._thread:
-            self._thread.join(timeout=2)
+        if self._thread_sys:
+            self._thread_sys.join(timeout=2)
+        if self._thread_mic:
+            self._thread_mic.join(timeout=2)
 
-    def _record_loop(self):
-        """后台录音主循环"""
+    def _record_sys_loop(self):
+        """系统回环录音循环 (面试官)"""
         try:
-            # 获取默认扬声器并创建 loopback 录音器
             speaker = sc.default_speaker()
-            loopback = sc.get_microphone(
-                id=str(speaker.name), include_loopback=True
-            )
+            loopback = sc.get_microphone(id=str(speaker.name), include_loopback=True)
 
-            # 每次读取 0.1 秒的数据块
             chunk_frames = self.sample_rate // 10
 
             with loopback.recorder(samplerate=self.sample_rate, channels=[0]) as recorder:
                 while self._running:
-                    # 读取一块音频数据 (shape: [frames, channels])
                     data = recorder.record(numframes=chunk_frames)
-
-                    # 转为单声道一维数组
                     mono = data[:, 0] if data.ndim > 1 else data
 
                     with self._lock:
-                        # 写入环形缓冲区
                         n = len(mono)
-                        end_pos = self._write_pos + n
+                        end_pos = self._write_pos_sys + n
 
                         if end_pos <= self._buffer_size:
-                            # 不需要绕回
-                            self._buffer[self._write_pos:end_pos] = mono
+                            self._buffer_sys[self._write_pos_sys:end_pos] = mono
                         else:
-                            # 需要绕回到开头
-                            first_part = self._buffer_size - self._write_pos
-                            self._buffer[self._write_pos:] = mono[:first_part]
-                            self._buffer[:n - first_part] = mono[first_part:]
+                            first_part = self._buffer_size - self._write_pos_sys
+                            self._buffer_sys[self._write_pos_sys:] = mono[:first_part]
+                            self._buffer_sys[:n - first_part] = mono[first_part:]
 
-                        self._write_pos = end_pos % self._buffer_size
+                        self._write_pos_sys = end_pos % self._buffer_size
 
         except Exception as e:
-            print(f"音频捕获异常: {e}")
-            self._running = False
+            print(f"系统音频捕获异常 (面试官声道静默): {e}")
+
+    def _record_mic_loop(self):
+        """麦克风录音循环 (候选人)"""
+        try:
+            mic = sc.default_microphone()
+            chunk_frames = self.sample_rate // 10
+
+            with mic.recorder(samplerate=self.sample_rate, channels=[0]) as recorder:
+                while self._running:
+                    data = recorder.record(numframes=chunk_frames)
+                    mono = data[:, 0] if data.ndim > 1 else data
+
+                    with self._lock:
+                        n = len(mono)
+                        end_pos = self._write_pos_mic + n
+
+                        if end_pos <= self._buffer_size:
+                            self._buffer_mic[self._write_pos_mic:end_pos] = mono
+                        else:
+                            first_part = self._buffer_size - self._write_pos_mic
+                            self._buffer_mic[self._write_pos_mic:] = mono[:first_part]
+                            self._buffer_mic[:n - first_part] = mono[first_part:]
+
+                        self._write_pos_mic = end_pos % self._buffer_size
+
+        except Exception as e:
+            print(f"麦克风捕获异常 (候选人声道静默，可能未授权或未连接): {e}")
 
     def get_audio_bytes(self) -> bytes:
         """
-        获取缓冲区中所有音频数据，转换为 WAV 格式的字节流
-
-        Returns:
-            bytes: WAV 格式的音频数据
+        合成双声道并导出为 WAV 字节流
+        左声道：系统音频，右声道：麦克风音频
         """
         with self._lock:
-            # 从环形缓冲区中按正确顺序取出数据
-            # write_pos 之后的数据是最旧的，write_pos 之前的数据是最新的
-            ordered = np.concatenate([
-                self._buffer[self._write_pos:],
-                self._buffer[:self._write_pos]
+            # 展开环形缓冲区
+            ordered_sys = np.concatenate([
+                self._buffer_sys[self._write_pos_sys:],
+                self._buffer_sys[:self._write_pos_sys]
+            ])
+            ordered_mic = np.concatenate([
+                self._buffer_mic[self._write_pos_mic:],
+                self._buffer_mic[:self._write_pos_mic]
             ])
 
-        # 去掉开头可能存在的静音部分（缓冲区未满时的零值区域）
-        # 找到第一个非零值的位置
-        nonzero_indices = np.nonzero(ordered)[0]
-        if len(nonzero_indices) == 0:
-            # 缓冲区完全为空
-            return b""
+        # 寻找静音截断点 (找到各自最早的非零点)
+        nonzero_sys = np.nonzero(ordered_sys)[0]
+        nonzero_mic = np.nonzero(ordered_mic)[0]
 
-        ordered = ordered[nonzero_indices[0]:]
+        start_idx = self._buffer_size
+        if len(nonzero_sys) > 0:
+            start_idx = min(start_idx, nonzero_sys[0])
+        if len(nonzero_mic) > 0:
+            start_idx = min(start_idx, nonzero_mic[0])
+
+        if start_idx == self._buffer_size:
+            return b""  # 两边全是静音
+
+        final_sys = ordered_sys[start_idx:]
+        final_mic = ordered_mic[start_idx:]
+
+        # 拼成双声道 [frames, 2]
+        stereo = np.column_stack((final_sys, final_mic))
 
         # 转换为 16-bit PCM
-        pcm_data = (ordered * 32767).astype(np.int16)
+        pcm_data = (stereo * 32767).astype(np.int16)
 
         # 写入内存中的 WAV 文件
         wav_buffer = io.BytesIO()
         with wave.open(wav_buffer, 'wb') as wf:
             wf.setnchannels(self.channels)
-            wf.setsampwidth(2)  # 16-bit = 2 bytes
+            wf.setsampwidth(2)  # 16-bit
             wf.setframerate(self.sample_rate)
             wf.writeframes(pcm_data.tobytes())
 
