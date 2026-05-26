@@ -336,13 +336,20 @@ class StealthAssistant(QMainWindow):
             prompt = self.ai_service.create_text_part(prompt_text)
             audio_part = self.ai_service.create_audio_part(audio_bytes)
 
+            # 捕获当前屏幕作为音频的视觉上下文
+            img = ImageGrab.grab()
+            img_byte_arr = io.BytesIO()
+            img.save(img_byte_arr, format='JPEG')
+            img_bytes = img_byte_arr.getvalue()
+            image_part = self.ai_service.create_image_part(img_bytes)
+
             # 前置填充
             padding = "<br>" * TEXT_CONFIG.get("padding_lines", 0)
             self.signals.update_output.emit(padding)
 
             # 流式请求
             self._start_markdown_block()
-            for chunk in self.ai_service.send_stream([prompt, audio_part]):
+            for chunk in self.ai_service.send_stream([prompt, audio_part, image_part]):
                 self.signals.stream_output.emit(chunk)
             self._flush_markdown_buffer()
 
