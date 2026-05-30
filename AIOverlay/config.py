@@ -48,7 +48,7 @@ OVERLAY_CONFIG = {
     "proxy": "http://127.0.0.1:7897", # 网络代理
     "scroll_step": 80,
     "move_step": 50,
-    "model": "gemini-3-flash-preview"
+    "model": "models/gemini-3.5-flash"
 }
 
 # ================= 伪装配置 =================

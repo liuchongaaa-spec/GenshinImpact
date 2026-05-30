@@ -18,7 +18,7 @@ import keyboard
 
 from AIOverlay.config import (
     WINDOW_CONFIG, TEXT_CONFIG, HOTKEY_CONFIG,
-    SCROLL_STEP, MOVE_STEP, LOAD_TEST_FILE, TEST_FILE_PATH, AUDIO_CONFIG
+    SCROLL_STEP, MOVE_STEP, LOAD_TEST_FILE, TEST_FILE_PATH, AUDIO_CONFIG, MODEL_ID
 )
 from AIOverlay.ai_service import AIService
 from AIOverlay.audio_capture import AudioCapture
@@ -144,7 +144,7 @@ class StealthAssistant(QMainWindow):
         """初始化AI服务"""
         try:
             self.ai_service.create_session()
-            print("AI 初始化完成")
+            print(f"初始化完成！当前使用的模型是: {MODEL_ID}")
         except Exception as e:
             print(f"AI 初始化失败: {e}")
 
