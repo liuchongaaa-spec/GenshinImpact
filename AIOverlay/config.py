@@ -3,7 +3,10 @@
 配置模块 - 统一在 config.py 中配置，不再读取外部 JSON
 """
 import os
-from AIOverlay.utils.exceptions import InitializationError
+
+
+class InitializationError(Exception):
+    """Raised when required startup configuration is unavailable."""
 
 # ================= 外部密钥文件路径 =================
 EXTERNAL_CONFIG_DIR = r"D:\tmp"

@@ -9,6 +9,7 @@ import time
 import subprocess
 import keyboard
 import threading
+from AIOverlay.utils.diagnostics import get_logger
 
 # 尝试读取配置中的热键
 try:
@@ -16,6 +17,9 @@ try:
     restart_hotkey = HOTKEY_CONFIG.get("restart", "alt+b")
 except Exception:
     restart_hotkey = "alt+b"
+
+
+logger = get_logger("watchdog")
 
 PYTHON_EXE = sys.executable
 MAIN_PROCESS = None
@@ -48,6 +52,11 @@ def start_main_app():
         cwd=project_dir,
         creationflags=0x08000000
     )
+    logger.info(
+        "Main process started; pid=%s",
+        MAIN_PROCESS.pid,
+        extra={"component": "watchdog", "event": "main_started", "task_id": None},
+    )
 
 def on_restart_hotkey():
     """快捷键触发时的回调"""
@@ -55,6 +64,10 @@ def on_restart_hotkey():
     threading.Thread(target=start_main_app, daemon=True).start()
 
 def main():
+    logger.info(
+        "Watchdog startup",
+        extra={"component": "watchdog", "event": "startup", "task_id": None},
+    )
     print("="*40)
     print("AI 助手看门狗已启动")
     print("="*40)

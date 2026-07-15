@@ -1,9 +1,6 @@
 package practices.practice5;
 
 public class problem23 {
-
-
-    //TODO  这题还没有理解
     public static void main(String[] args) {
 
     }

@@ -1,2 +1,0 @@
-- 运行前需要将 `config.py` 中的 `GEMINI_API_KEY` 替换为你自己的 Key  
-- 运行前需要先配置系统提示词，详情见config.py

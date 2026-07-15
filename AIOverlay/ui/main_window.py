@@ -1,92 +1,156 @@
 # -*- coding: utf-8 -*-
-"""
-主窗口模块 - 纯快捷键驱动、鼠标穿透的隐蔽覆盖层
-"""
+"""Transparent overlay window. All QWidget access stays on the GUI thread."""
 
 import os
-import io
 import sys
-import threading
 
-from PyQt5.QtWidgets import (
-    QMainWindow, QTextEdit, QVBoxLayout, QWidget, QApplication, QDesktopWidget
-)
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QTextCursor
-from PIL import ImageGrab
 import keyboard
+from PyQt5.QtCore import QObject, QThread, Qt, pyqtSignal
+from PyQt5.QtGui import QTextCursor
+from PyQt5.QtWidgets import (
+    QApplication,
+    QDesktopWidget,
+    QMainWindow,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
 
 from AIOverlay.config import (
-    WINDOW_CONFIG, TEXT_CONFIG, HOTKEY_CONFIG,
-    SCROLL_STEP, MOVE_STEP, LOAD_TEST_FILE, TEST_FILE_PATH, AUDIO_CONFIG, MODEL_ID
+    HOTKEY_CONFIG,
+    LOAD_TEST_FILE,
+    MODEL_ID,
+    MOVE_STEP,
+    SCROLL_STEP,
+    TEST_FILE_PATH,
+    TEXT_CONFIG,
+    WINDOW_CONFIG,
 )
-from AIOverlay.ai_service import AIService
-from AIOverlay.audio_capture import AudioCapture
+from AIOverlay.controllers.application_controller import (
+    ApplicationController,
+    create_default_controller,
+)
 from AIOverlay.stealth import stealth_manager
-from AIOverlay.utils.signals import WorkerSignals
-from AIOverlay.utils.markdown_renderer import markdown_to_html, get_markdown_css
 from AIOverlay.ui.tray import TrayManager
-from AIOverlay.ui.styles import build_main_style
+from AIOverlay.utils.diagnostics import get_logger, health_registry
+from AIOverlay.utils.markdown_renderer import get_markdown_css, markdown_to_html
+
+
+class WorkerSignals(QObject):
+    toggle_visible = pyqtSignal()
+    screenshot_requested = pyqtSignal()
+    move_window = pyqtSignal(int)
+    scroll_content = pyqtSignal(int)
+    exit_app = pyqtSignal()
+    audio_capture_requested = pyqtSignal()
+
+
+FONT_FAMILY = "Consolas"
+
+
+def build_main_style(font_color: str = "#333333", bg_color: str = "rgba(255, 255, 255, 0.7)", font_size: int = 13) -> str:
+    return f"""
+        QWidget#MainFrame {{
+            background-color: transparent;
+            border: none;
+        }}
+        QTextEdit {{
+            background-color: {bg_color};
+            color: {font_color};
+            border: none;
+            border-radius: 4px;
+            font-family: "{FONT_FAMILY}", "Cascadia Code", "Consolas", monospace;
+            font-size: {font_size}px;
+            line-height: 1.5;
+            padding: 10px;
+            selection-background-color: {font_color};
+            selection-color: black;
+        }}
+
+        /* 自定义滚动条 - 极细低调 */
+        QScrollBar:vertical {{
+            border: none;
+            background: transparent;
+            width: 4px;
+            margin: 0px;
+        }}
+        QScrollBar::handle:vertical {{
+            background: rgba(255, 255, 255, 0.2);
+            min-height: 20px;
+            border-radius: 2px;
+        }}
+        QScrollBar::handle:vertical:hover {{
+            background: rgba(255, 255, 255, 0.4);
+        }}
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+            height: 0px;
+        }}
+    """
+
+
+logger = get_logger("main_window")
 
 
 class StealthAssistant(QMainWindow):
-    """隐蔽AI助手主窗口 - 纯展示层"""
+    """UI-only overlay backed by an ApplicationController."""
 
-    def __init__(self):
+    def __init__(
+        self,
+        ai_service=None,
+        audio_capture=None,
+        screenshot_provider=None,
+        protection_service=None,
+        controller=None,
+    ):
         super().__init__()
-
-        # Markdown 流式累积缓冲区
-        self._markdown_buffer = ""
-
-        # 截屏锁 (防止重复触发)
-        self._screenshot_lock = False
-
-        # 音频捕获锁 (防止重复触发)
-        self._audio_lock = False
-
-        # 信号
+        self._active_task_ids: set[str] = set()
         self.signals = WorkerSignals()
-
-        # 初始化组件
-        self.ai_service = AIService()
         self.tray_manager = None
-
-        # 初始化音频缓冲区
-        self.audio_capture = AudioCapture(
-            buffer_seconds=AUDIO_CONFIG.get("buffer_seconds", 45),
-            sample_rate=AUDIO_CONFIG.get("sample_rate", 16000)
+        self.protection_service = (
+            protection_service if protection_service is not None else stealth_manager
         )
-        self.audio_capture.start()
 
-        # 初始化
-        self._init_ai()
+        self.controller = controller
+        if self.controller is None:
+            legacy_services = (ai_service, audio_capture, screenshot_provider)
+            if any(service is not None for service in legacy_services):
+                if not all(service is not None for service in legacy_services):
+                    raise ValueError(
+                        "ai_service, audio_capture, and screenshot_provider must be provided together"
+                    )
+                self.controller = ApplicationController(
+                    ai_service,
+                    audio_capture,
+                    screenshot_provider,
+                )
+            else:
+                self.controller = create_default_controller()
+
+        # Compatibility aliases used by diagnostics and later lifecycle work.
+        self.ai_service = self.controller.ai_service
+        self.audio_capture = self.controller.audio_capture
+        self.screenshot_provider = self.controller.screenshot_provider
+
+        self.controller.start()
+        print(f"初始化完成！当前使用的模型是: {MODEL_ID}")
         self._init_ui()
         self._connect_signals()
         self._apply_stealth()
         self._setup_hotkeys()
         self._setup_tray()
-        
-        # 启动时加载初始内容
         self._load_initial_content()
 
     def _load_initial_content(self):
-        """如果开启了配置，则加载初始测试文件内容"""
         if LOAD_TEST_FILE and os.path.exists(TEST_FILE_PATH):
             try:
-                with open(TEST_FILE_PATH, 'r', encoding='utf-8') as f:
-                    content = f.read()
+                with open(TEST_FILE_PATH, "r", encoding="utf-8") as file:
+                    content = file.read()
                 if content.strip():
-                    html = markdown_to_html(content)
-                    self.signals.update_output.emit(html)
-            except Exception as e:
-                print(f"无法加载初始文件: {e}")
+                    self._append_html(markdown_to_html(content))
+            except Exception as exc:
+                print(f"无法加载初始文件: {exc}")
 
     def _connect_signals(self):
-        """连接信号到槽"""
-        self.signals.update_output.connect(self._append_html)
-        self.signals.stream_output.connect(self._append_stream)
-        self.signals.update_status.connect(self._update_status)
-        self.signals.error.connect(self._show_error)
         self.signals.toggle_visible.connect(self._handle_toggle_visible)
         self.signals.screenshot_requested.connect(self._handle_screenshot)
         self.signals.move_window.connect(self._handle_move_window)
@@ -94,8 +158,12 @@ class StealthAssistant(QMainWindow):
         self.signals.exit_app.connect(self._handle_exit)
         self.signals.audio_capture_requested.connect(self._handle_audio_capture)
 
+        self.controller.task_started.connect(self._handle_task_started)
+        self.controller.task_content_started.connect(self._handle_task_content_started)
+        self.controller.task_completed.connect(self._handle_task_completed)
+        self.controller.task_failed.connect(self._handle_task_failed)
+
     def _setup_hotkeys(self):
-        """设置全局快捷键"""
         hotkeys = HOTKEY_CONFIG
         bindings = [
             (hotkeys["toggle_visible"], lambda: self.signals.toggle_visible.emit()),
@@ -107,7 +175,6 @@ class StealthAssistant(QMainWindow):
             (hotkeys["exit"], lambda: self.signals.exit_app.emit()),
         ]
 
-        # 音频快捷键 (仅在配置了的情况下注册)
         audio_key = hotkeys.get("audio_capture")
         if audio_key:
             bindings.append(
@@ -117,82 +184,85 @@ class StealthAssistant(QMainWindow):
         for key, callback in bindings:
             try:
                 keyboard.add_hotkey(key, callback, suppress=True)
-            except Exception as e:
-                print(f"快捷键 {key} 注册失败: {e}")
+            except Exception as exc:
+                print(f"快捷键 {key} 注册失败: {exc}")
 
-        print(f"快捷键已注册: {', '.join(h for h, _ in bindings)}")
+        print(f"快捷键已注册: {', '.join(key for key, _ in bindings)}")
+        health_registry.update(
+            "hotkeys",
+            "healthy",
+            "Global hotkeys registered",
+            {"count": len(bindings)},
+        )
+        logger.info(
+            "Global hotkeys registered; count=%d",
+            len(bindings),
+            extra={"component": "hotkeys", "event": "registered", "task_id": None},
+        )
 
     def _setup_tray(self):
-        """设置系统托盘"""
         self.tray_manager = TrayManager(self)
         self.tray_manager.show()
 
     def _handle_toggle_visible(self):
-        """切换窗口可见性"""
+        self._assert_gui_thread()
         if self.isVisible():
             self.hide()
         else:
             self.showNormal()
 
     def _handle_exit(self):
-        """紧急退出"""
+        self._assert_gui_thread()
         if self.tray_manager:
             self.tray_manager.hide()
         QApplication.quit()
 
-    def _init_ai(self):
-        """初始化AI服务"""
-        try:
-            self.ai_service.create_session()
-            print(f"初始化完成！当前使用的模型是: {MODEL_ID}")
-        except Exception as e:
-            print(f"AI 初始化失败: {e}")
-
     def _apply_stealth(self):
-        """应用隐蔽保护"""
         if sys.platform == "win32":
             from PyQt5.QtCore import QTimer
+
             QTimer.singleShot(100, self._do_apply_stealth)
 
     def _do_apply_stealth(self):
-        """执行隐蔽保护"""
+        self._assert_gui_thread()
         try:
             hwnd = int(self.winId())
-            results = stealth_manager.apply_all_protections(hwnd)
+            results = self.protection_service.apply_all_protections(hwnd)
             print(f"隐蔽保护应用结果: {results}")
-        except Exception as e:
-            print(f"隐蔽保护应用失败: {e}")
+        except Exception as exc:
+            print(f"隐蔽保护应用失败: {exc}")
 
     def _init_ui(self):
-        """初始化UI - 极简布局"""
-        # 窗口属性
         self.setWindowFlags(
-            Qt.Tool |                       # 不在任务栏显示
-            Qt.FramelessWindowHint |         # 无边框
-            Qt.WindowStaysOnTopHint |        # 置顶
-            Qt.WindowTransparentForInput     # Qt级别鼠标穿透
+            Qt.Tool
+            | Qt.FramelessWindowHint
+            | Qt.WindowStaysOnTopHint
+            | Qt.WindowTransparentForInput
         )
         self.setAttribute(Qt.WA_TranslucentBackground)
 
-        # 主容器
         central_widget = QWidget()
         central_widget.setObjectName("MainFrame")
 
-        # 辅助函数：将 #RRGGBB 转换为带透明度的 rgba
         def get_rgba(color, opacity):
-            c = color.lstrip('#')
-            if len(c) == 3: c = ''.join(x + x for x in c)
-            if len(c) == 6:
-                r, g, b = tuple(int(c[i:i+2], 16) for i in (0, 2, 4))
-                return f"rgba({r}, {g}, {b}, {opacity})"
+            value = color.lstrip("#")
+            if len(value) == 3:
+                value = "".join(character + character for character in value)
+            if len(value) == 6:
+                red, green, blue = tuple(
+                    int(value[index:index + 2], 16) for index in (0, 2, 4)
+                )
+                return f"rgba({red}, {green}, {blue}, {opacity})"
             return color
 
-        # 应用配置驱动的样式
-        final_font_color = get_rgba(TEXT_CONFIG["font_color"], TEXT_CONFIG.get("text_opacity", 1.0))
+        final_font_color = get_rgba(
+            TEXT_CONFIG["font_color"],
+            TEXT_CONFIG.get("text_opacity", 1.0),
+        )
         style = build_main_style(
             font_color=final_font_color,
             bg_color=TEXT_CONFIG.get("bg_color", "rgba(255, 255, 255, 0.7)"),
-            font_size=TEXT_CONFIG["font_size"]
+            font_size=TEXT_CONFIG["font_size"],
         )
         central_widget.setStyleSheet(style)
 
@@ -200,7 +270,6 @@ class StealthAssistant(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # 唯一的UI元素：只读输出框
         self.text_area = QTextEdit()
         self.text_area.setReadOnly(True)
         self.text_area.setPlaceholderText("Ready. Press Alt+S to capture screen.")
@@ -208,193 +277,146 @@ class StealthAssistant(QMainWindow):
         self.text_area.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.text_area.setFrameStyle(0)
 
-        # 注入 Markdown CSS (同步配置的字体颜色、大小、行间距和透明度)
         css = get_markdown_css(
             font_color=TEXT_CONFIG["font_color"],
             font_size=TEXT_CONFIG["font_size"],
             line_height=TEXT_CONFIG.get("line_height", 1.5),
-            text_opacity=TEXT_CONFIG.get("text_opacity", 1.0)
+            text_opacity=TEXT_CONFIG.get("text_opacity", 1.0),
         ).replace("<style>", "").replace("</style>", "")
         self.text_area.document().setDefaultStyleSheet(css)
 
         main_layout.addWidget(self.text_area)
         self.setCentralWidget(central_widget)
 
-        # 最后应用从配置读取的窗口位置、大小和透明度
-        wc = WINDOW_CONFIG
+        window_config = WINDOW_CONFIG
         screen = QDesktopWidget().screenGeometry()
-        print(f"🖥️ 当前屏幕分辨率: {screen.width()}x{screen.height()}")
-        print(f"📐 尝试应用窗口配置: x={wc['x']}, y={wc['y']}, w={wc['width']}, h={wc['height']}, opacity={wc['opacity']}")
-        
-        self.setGeometry(wc["x"], wc["y"], wc["width"], wc["height"])
-        self.setWindowOpacity(wc["opacity"])
-        self.raise_()  # 确保在最前面
-
-    # ========== 窗口移动 (内存中直接修改) ==========
+        print(f"当前屏幕分辨率: {screen.width()}x{screen.height()}")
+        print(
+            "📐 尝试应用窗口配置: "
+            f"x={window_config['x']}, y={window_config['y']}, "
+            f"w={window_config['width']}, h={window_config['height']}, "
+            f"opacity={window_config['opacity']}"
+        )
+        self.setGeometry(
+            window_config["x"],
+            window_config["y"],
+            window_config["width"],
+            window_config["height"],
+        )
+        self.setWindowOpacity(window_config["opacity"])
+        self.raise_()
 
     def _handle_move_window(self, delta_x: int):
-        """
-        移动窗口位置，带屏幕边界钳制
-        
-        Args:
-            delta_x: 水平移动像素 (正=右, 负=左)
-        """
-        geo = self.geometry()
-        screen_geo = QDesktopWidget().availableGeometry(self)
-
-        new_x = geo.x() + delta_x
-
-        # 钳制到屏幕边界
-        min_x = screen_geo.x()
-        max_x = screen_geo.x() + screen_geo.width() - geo.width()
-        new_x = max(min_x, min(new_x, max_x))
-
-        self.move(new_x, geo.y())
-
-    # ========== 内容滚动 ==========
+        self._assert_gui_thread()
+        geometry = self.geometry()
+        screen_geometry = QDesktopWidget().availableGeometry(self)
+        minimum_x = screen_geometry.x()
+        maximum_x = screen_geometry.x() + screen_geometry.width() - geometry.width()
+        new_x = max(minimum_x, min(geometry.x() + delta_x, maximum_x))
+        self.move(new_x, geometry.y())
 
     def _handle_scroll_content(self, delta: int):
-        """
-        滚动输出框内容
-        
-        Args:
-            delta: 滚动像素 (正=下, 负=上)
-        """
+        self._assert_gui_thread()
         scrollbar = self.text_area.verticalScrollBar()
         scrollbar.setValue(scrollbar.value() + delta)
 
-    # ========== 截图功能 ==========
-
     def _handle_screenshot(self):
-        """处理截图 (快捷键触发)"""
-        if self._screenshot_lock:
-            return
-
-        self._screenshot_lock = True
-        threading.Thread(target=self._bg_screenshot, daemon=True).start()
-
-    def _bg_screenshot(self):
-        """后台截图处理"""
-        try:
-            # 直接截屏，无需 hide/show
-            # WDA_EXCLUDEFROMCAPTURE 已保证截图不包含自身
-            img = ImageGrab.grab()
-
-            img_byte_arr = io.BytesIO()
-            img.save(img_byte_arr, format='JPEG')
-            img_bytes = img_byte_arr.getvalue()
-
-            self.signals.update_status.emit("sending...")
-
-            prompt_text = "请分析这张屏幕截图的内容。"
-            prompt = self.ai_service.create_text_part(prompt_text)
-            image_part = self.ai_service.create_image_part(img_bytes)
-
-            # 发送前置填充
-            padding = "<br>" * TEXT_CONFIG.get("padding_lines", 0)
-            self.signals.update_output.emit(padding)
-
-            # 流式请求
-            self._start_markdown_block()
-            for chunk in self.ai_service.send_stream([prompt, image_part]):
-                self.signals.stream_output.emit(chunk)
-            self._flush_markdown_buffer()
-            
-            # 后置填充
-            self.signals.update_output.emit(padding)
-
-            self.signals.update_status.emit("ready")
-
-        except Exception as e:
-            self.signals.error.emit(f"截图处理错误: {e}")
-        finally:
-            self._screenshot_lock = False
-
-    # ========== 音频捕获功能 ==========
+        self._assert_gui_thread()
+        self._verify_window_protection()
+        self.controller.request_screenshot()
 
     def _handle_audio_capture(self):
-        """处理音频捕获 (快捷键触发)"""
-        if self._audio_lock:
+        self._assert_gui_thread()
+        self._verify_window_protection()
+        self.controller.request_audio_capture()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if sys.platform == "win32":
+            from PyQt5.QtCore import QTimer
+
+            QTimer.singleShot(0, self._verify_window_protection)
+
+    def _verify_window_protection(self):
+        self._assert_gui_thread()
+        verifier = getattr(self.protection_service, "verify_or_reapply", None)
+        if verifier is None:
             return
-
-        self._audio_lock = True
-        threading.Thread(target=self._bg_audio_capture, daemon=True).start()
-
-    def _bg_audio_capture(self):
-        """后台音频捕获处理"""
         try:
-            # 从环形缓冲区中切取音频数据
-            audio_bytes = self.audio_capture.get_audio_bytes()
+            verifier(int(self.winId()))
+        except Exception:
+            logger.exception(
+                "Window protection verification failed",
+                extra={
+                    "component": "window_protection",
+                    "event": "verification_failed",
+                    "task_id": None,
+                },
+            )
 
-            if not audio_bytes:
-                self.signals.error.emit("音频缓冲区为空，请稍后再试")
-                return
+    def _handle_task_started(self, task_id: str, _kind: str):
+        self._assert_gui_thread()
+        self._active_task_ids.add(task_id)
 
-            self.signals.update_status.emit("sending audio...")
+    def _handle_task_content_started(self, task_id: str, status: str):
+        self._assert_gui_thread()
+        if task_id not in self._active_task_ids:
+            return
+        self._append_html(self._task_padding())
+        self._update_status(status, task_id)
 
-            prompt_text = "请分析这段音频内容。"
-            prompt = self.ai_service.create_text_part(prompt_text)
-            audio_part = self.ai_service.create_audio_part(audio_bytes)
+    def _handle_task_completed(self, task_id: str, html: str):
+        self._assert_gui_thread()
+        if task_id not in self._active_task_ids:
+            return
+        if html:
+            self._append_html(html)
+        self._append_html(self._task_padding())
+        self._active_task_ids.discard(task_id)
+        self._update_status("ready", task_id)
 
-            # 捕获当前屏幕作为音频的视觉上下文
-            img = ImageGrab.grab()
-            img_byte_arr = io.BytesIO()
-            img.save(img_byte_arr, format='JPEG')
-            img_bytes = img_byte_arr.getvalue()
-            image_part = self.ai_service.create_image_part(img_bytes)
+    def _handle_task_failed(self, task_id: str, error_message: str):
+        self._assert_gui_thread()
+        if task_id not in self._active_task_ids:
+            return
+        self._active_task_ids.discard(task_id)
+        self._show_error(error_message, task_id)
 
-            # 前置填充
-            padding = "<br>" * TEXT_CONFIG.get("padding_lines", 0)
-            self.signals.update_output.emit(padding)
+    @staticmethod
+    def _task_padding() -> str:
+        return "<br>" * TEXT_CONFIG.get("padding_lines", 0)
 
-            # 流式请求
-            self._start_markdown_block()
-            for chunk in self.ai_service.send_stream([prompt, audio_part, image_part]):
-                self.signals.stream_output.emit(chunk)
-            self._flush_markdown_buffer()
-
-            # 后置填充
-            self.signals.update_output.emit(padding)
-
-            self.signals.update_status.emit("ready")
-
-        except Exception as e:
-            self.signals.error.emit(f"音频处理错误: {e}")
-        finally:
-            self._audio_lock = False
-
-    # ========== UI更新 ==========
-
-    def _append_html(self, html):
-        """添加HTML到输出区域"""
+    def _append_html(self, html: str):
+        self._assert_gui_thread()
         cursor = self.text_area.textCursor()
         cursor.movePosition(QTextCursor.End)
         self.text_area.setTextCursor(cursor)
         self.text_area.insertHtml(html)
         self.text_area.ensureCursorVisible()
 
-    def _append_stream(self, text):
-        """流式添加文本到缓冲区"""
-        self._markdown_buffer += text
-
-    def _flush_markdown_buffer(self):
-        """将缓冲区的 Markdown 转换为 HTML 并显示"""
-        if self._markdown_buffer:
-            html = markdown_to_html(self._markdown_buffer)
-            self._append_html(html)
-            self._markdown_buffer = ""
-
-    def _start_markdown_block(self):
-        """开始新的 Markdown 块"""
-        self._markdown_buffer = ""
-
-    def _update_status(self, text):
-        """更新状态 (通过窗口标题，虽然不可见但可用于调试)"""
+    def _update_status(self, text: str, task_id: str | None = None):
+        self._assert_gui_thread()
         print(f"[Status] {text}")
+        logger.info(
+            "UI task status: %s",
+            text,
+            extra={"component": "ui", "event": "task_status", "task_id": task_id},
+        )
 
-    def _show_error(self, err_msg):
-        """在输出区域显示错误"""
+    def _show_error(self, error_message: str, task_id: str | None = None):
+        self._assert_gui_thread()
+        health_registry.update("last_task", "failed", error_message)
+        logger.error(
+            "UI task error: %s",
+            error_message,
+            extra={"component": "ui", "event": "task_error", "task_id": task_id},
+        )
         font_color = TEXT_CONFIG.get("font_color", "#ff5555")
         self._append_html(
-            f"<div style='color:{font_color}; font-size:11px;'>Error: {err_msg}</div>"
+            f"<div style='color:{font_color}; font-size:11px;'>"
+            f"Error: {error_message}</div>"
         )
+
+    def _assert_gui_thread(self):
+        if QThread.currentThread() is not self.thread():
+            raise RuntimeError("QWidget access attempted outside the GUI thread")

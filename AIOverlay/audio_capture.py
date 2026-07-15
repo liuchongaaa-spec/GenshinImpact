@@ -1,172 +1,360 @@
-# -*- coding: utf-8 -*-
-"""
-音频捕获模块 - 立体声双轨并联录制
-左声道：系统扬声器回环（面试官）
-右声道：系统默认麦克风（候选人）
-全程不写磁盘，按需截取最近 N 秒合成双通道 WAV 数据。
-"""
+"""Rolling stereo capture: system loopback on the left, microphone on the right."""
+
+from __future__ import annotations
 
 import io
-import wave
 import threading
+import time
+import wave
+
 import numpy as np
 import soundcard as sc
 
+from AIOverlay.utils.diagnostics import get_logger, health_registry
+
+
+logger = get_logger("audio_capture")
+
 
 class AudioCapture:
-    """系统音频与麦克风双轨滚动缓冲区"""
+    """Capture two independent mono sources into one bounded stereo snapshot."""
 
-    def __init__(self, buffer_seconds: int = 45, sample_rate: int = 16000):
-        """
-        初始化双轨音频捕获器
+    def __init__(
+        self,
+        buffer_seconds: int = 45,
+        sample_rate: int = 16000,
+        *,
+        audio_backend=sc,
+        retry_delays: tuple[float, ...] = (1.0, 2.0, 5.0),
+    ) -> None:
+        if buffer_seconds <= 0 or sample_rate <= 0:
+            raise ValueError("buffer_seconds and sample_rate must be positive")
+        if not retry_delays or any(delay < 0 for delay in retry_delays):
+            raise ValueError("retry_delays must contain non-negative values")
 
-        Args:
-            buffer_seconds: 缓冲区保留的秒数
-            sample_rate: 采样率 (Hz)
-        """
         self.sample_rate = sample_rate
         self.buffer_seconds = buffer_seconds
-        self.channels = 2  # 强制立体声 (Left=Sys, Right=Mic)
-
-        # 环形缓冲区大小
+        self.channels = 2
+        self._audio_backend = audio_backend
+        self._retry_delays = retry_delays
         self._buffer_size = self.sample_rate * self.buffer_seconds
-        
-        # 面试官 (系统回环)
+
         self._buffer_sys = np.zeros(self._buffer_size, dtype=np.float32)
-        self._write_pos_sys = 0
-        
-        # 候选人 (麦克风)
         self._buffer_mic = np.zeros(self._buffer_size, dtype=np.float32)
+        self._write_pos_sys = 0
         self._write_pos_mic = 0
+        self._valid_frames_sys = 0
+        self._valid_frames_mic = 0
 
         self._lock = threading.Lock()
-
-        # 录音线程控制
+        self._lifecycle_lock = threading.Lock()
+        self._status_lock = threading.Lock()
+        self._stop_event = threading.Event()
         self._running = False
-        self._thread_sys = None
-        self._thread_mic = None
+        self._thread_sys: threading.Thread | None = None
+        self._thread_mic: threading.Thread | None = None
+        self._channel_status = {
+            "system": self._new_channel_status(),
+            "microphone": self._new_channel_status(),
+        }
 
-    def start(self):
-        """启动后台双轨录音线程"""
-        if self._running:
+    @staticmethod
+    def _new_channel_status() -> dict[str, object]:
+        return {
+            "state": "stopped",
+            "ready": False,
+            "failure_count": 0,
+            "last_error": "",
+            "last_sample_at": None,
+        }
+
+    def start(self) -> None:
+        with self._lifecycle_lock:
+            if self._running:
+                return
+            if not self._threads_stopped():
+                raise RuntimeError(
+                    "Previous audio capture threads are still stopping"
+                )
+            self._stop_event.clear()
+            self._running = True
+            self._set_channel_status("system", state="starting", ready=False)
+            self._set_channel_status("microphone", state="starting", ready=False)
+            self._thread_sys = threading.Thread(
+                target=self._record_channel_loop,
+                args=("system",),
+                daemon=True,
+                name="aioverlay-audio-system",
+            )
+            self._thread_mic = threading.Thread(
+                target=self._record_channel_loop,
+                args=("microphone",),
+                daemon=True,
+                name="aioverlay-audio-microphone",
+            )
+            health_registry.update(
+                "audio",
+                "starting",
+                "Audio capture threads starting",
+                {"sample_rate": self.sample_rate, "buffer_seconds": self.buffer_seconds},
+            )
+            self._thread_sys.start()
+            self._thread_mic.start()
+
+        logger.info(
+            "Audio capture starting; sample_rate=%d buffer_seconds=%d",
+            self.sample_rate,
+            self.buffer_seconds,
+            extra={"component": "audio", "event": "starting", "task_id": None},
+        )
+        print(f"双轨音频缓冲区已启动 (保留最近 {self.buffer_seconds} 秒立体声)")
+
+    def stop(self) -> bool:
+        with self._lifecycle_lock:
+            if not self._running:
+                return self._threads_stopped()
+            self._running = False
+            self._stop_event.set()
+            threads = (self._thread_sys, self._thread_mic)
+            for thread in threads:
+                if thread is not None and thread is not threading.current_thread():
+                    thread.join(timeout=2.0)
+
+            stopped = self._threads_stopped()
+            if stopped:
+                self._set_channel_status("system", state="stopped", ready=False)
+                self._set_channel_status("microphone", state="stopped", ready=False)
+                health_registry.update("audio", "stopped", "Audio capture stopped")
+            else:
+                health_registry.update(
+                    "audio",
+                    "degraded",
+                    "Audio capture stop timed out",
+                    self.channel_health_snapshot(),
+                )
+            logger.info(
+                "Audio capture stopped; threads_stopped=%s",
+                stopped,
+                extra={"component": "audio", "event": "stopped", "task_id": None},
+            )
+            return stopped
+
+    def _threads_stopped(self) -> bool:
+        return all(
+            thread is None or not thread.is_alive()
+            for thread in (self._thread_sys, self._thread_mic)
+        )
+
+    def _record_channel_loop(self, channel: str) -> None:
+        consecutive_failures = 0
+        while not self._stop_event.is_set():
+            try:
+                source = self._resolve_source(channel)
+                with source.recorder(
+                    samplerate=self.sample_rate,
+                    channels=[0],
+                ) as recorder:
+                    consecutive_failures = 0
+                    self._set_channel_status(
+                        channel,
+                        state="healthy",
+                        ready=True,
+                        last_error="",
+                    )
+                    self._update_aggregate_health()
+                    chunk_frames = max(1, self.sample_rate // 10)
+                    while not self._stop_event.is_set():
+                        data = recorder.record(numframes=chunk_frames)
+                        mono = data[:, 0] if data.ndim > 1 else data
+                        self._write_samples(channel, mono)
+                        self._set_channel_status(
+                            channel,
+                            state="healthy",
+                            ready=True,
+                            last_sample_at=time.time(),
+                        )
+            except Exception as exc:
+                if self._stop_event.is_set():
+                    break
+                consecutive_failures += 1
+                with self._status_lock:
+                    total_failures = int(
+                        self._channel_status[channel]["failure_count"]
+                    ) + 1
+                self._set_channel_status(
+                    channel,
+                    state="degraded",
+                    ready=False,
+                    failure_count=total_failures,
+                    last_error=str(exc),
+                )
+                self._update_aggregate_health()
+                if total_failures <= 3 or total_failures % 12 == 0:
+                    logger.exception(
+                        "Audio channel failed; channel=%s failure_count=%d",
+                        channel,
+                        total_failures,
+                        extra={
+                            "component": f"audio_{channel}",
+                            "event": "channel_failed",
+                            "task_id": None,
+                        },
+                    )
+                delay = self._retry_delays[
+                    min(consecutive_failures - 1, len(self._retry_delays) - 1)
+                ]
+                self._stop_event.wait(delay)
+
+        self._set_channel_status(channel, state="stopped", ready=False)
+
+    def _resolve_source(self, channel: str):
+        if channel == "system":
+            speaker = self._audio_backend.default_speaker()
+            return self._audio_backend.get_microphone(
+                id=str(speaker.name),
+                include_loopback=True,
+            )
+        return self._audio_backend.default_microphone()
+
+    def _write_samples(self, channel: str, samples) -> None:
+        mono = np.asarray(samples, dtype=np.float32).reshape(-1)
+        if mono.size == 0:
             return
+        if mono.size >= self._buffer_size:
+            mono = mono[-self._buffer_size:]
 
-        self._running = True
-        self._thread_sys = threading.Thread(target=self._record_sys_loop, daemon=True)
-        self._thread_mic = threading.Thread(target=self._record_mic_loop, daemon=True)
-        
-        self._thread_sys.start()
-        self._thread_mic.start()
-        print(f"🎤 双轨音频缓冲区已启动 (保留最近 {self.buffer_seconds} 秒立体声)")
+        with self._lock:
+            if channel == "system":
+                buffer = self._buffer_sys
+                position = self._write_pos_sys
+                valid_frames = self._valid_frames_sys
+            elif channel == "microphone":
+                buffer = self._buffer_mic
+                position = self._write_pos_mic
+                valid_frames = self._valid_frames_mic
+            else:
+                raise ValueError(f"Unknown audio channel: {channel}")
 
-    def stop(self):
-        """停止录音"""
-        self._running = False
-        if self._thread_sys:
-            self._thread_sys.join(timeout=2)
-        if self._thread_mic:
-            self._thread_mic.join(timeout=2)
+            count = mono.size
+            first = min(count, self._buffer_size - position)
+            buffer[position:position + first] = mono[:first]
+            remaining = count - first
+            if remaining:
+                buffer[:remaining] = mono[first:]
+            position = (position + count) % self._buffer_size
+            valid_frames = min(self._buffer_size, valid_frames + count)
 
-    def _record_sys_loop(self):
-        """系统回环录音循环 (面试官)"""
-        try:
-            speaker = sc.default_speaker()
-            loopback = sc.get_microphone(id=str(speaker.name), include_loopback=True)
+            if channel == "system":
+                self._write_pos_sys = position
+                self._valid_frames_sys = valid_frames
+            else:
+                self._write_pos_mic = position
+                self._valid_frames_mic = valid_frames
 
-            chunk_frames = self.sample_rate // 10
+    def channel_health_snapshot(self) -> dict[str, dict[str, object]]:
+        with self._status_lock:
+            result = {
+                name: dict(status)
+                for name, status in self._channel_status.items()
+            }
+        result["system"]["thread_alive"] = bool(
+            self._thread_sys and self._thread_sys.is_alive()
+        )
+        result["microphone"]["thread_alive"] = bool(
+            self._thread_mic and self._thread_mic.is_alive()
+        )
+        return result
 
-            with loopback.recorder(samplerate=self.sample_rate, channels=[0]) as recorder:
-                while self._running:
-                    data = recorder.record(numframes=chunk_frames)
-                    mono = data[:, 0] if data.ndim > 1 else data
+    def _set_channel_status(self, channel: str, **changes: object) -> None:
+        with self._status_lock:
+            self._channel_status[channel].update(changes)
+            status = dict(self._channel_status[channel])
+        health_state = str(status["state"])
+        if health_state not in {"starting", "healthy", "degraded", "stopped"}:
+            health_state = "degraded"
+        health_registry.update(
+            f"audio_{channel}",
+            health_state,
+            str(status["last_error"]),
+            status,
+        )
 
-                    with self._lock:
-                        n = len(mono)
-                        end_pos = self._write_pos_sys + n
-
-                        if end_pos <= self._buffer_size:
-                            self._buffer_sys[self._write_pos_sys:end_pos] = mono
-                        else:
-                            first_part = self._buffer_size - self._write_pos_sys
-                            self._buffer_sys[self._write_pos_sys:] = mono[:first_part]
-                            self._buffer_sys[:n - first_part] = mono[first_part:]
-
-                        self._write_pos_sys = end_pos % self._buffer_size
-
-        except Exception as e:
-            print(f"系统音频捕获异常 (面试官声道静默): {e}")
-
-    def _record_mic_loop(self):
-        """麦克风录音循环 (候选人)"""
-        try:
-            mic = sc.default_microphone()
-            chunk_frames = self.sample_rate // 10
-
-            with mic.recorder(samplerate=self.sample_rate, channels=[0]) as recorder:
-                while self._running:
-                    data = recorder.record(numframes=chunk_frames)
-                    mono = data[:, 0] if data.ndim > 1 else data
-
-                    with self._lock:
-                        n = len(mono)
-                        end_pos = self._write_pos_mic + n
-
-                        if end_pos <= self._buffer_size:
-                            self._buffer_mic[self._write_pos_mic:end_pos] = mono
-                        else:
-                            first_part = self._buffer_size - self._write_pos_mic
-                            self._buffer_mic[self._write_pos_mic:] = mono[:first_part]
-                            self._buffer_mic[:n - first_part] = mono[first_part:]
-
-                        self._write_pos_mic = end_pos % self._buffer_size
-
-        except Exception as e:
-            print(f"麦克风捕获异常 (候选人声道静默，可能未授权或未连接): {e}")
+    def _update_aggregate_health(self) -> None:
+        snapshot = self.channel_health_snapshot()
+        states = [snapshot["system"]["state"], snapshot["microphone"]["state"]]
+        ready_count = sum(bool(snapshot[name]["ready"]) for name in snapshot)
+        if ready_count == 2:
+            state, detail = "healthy", "Both audio channels ready"
+        elif ready_count == 1:
+            state, detail = "degraded", "One audio channel ready"
+        elif "starting" in states:
+            state, detail = "starting", "Audio channels starting"
+        else:
+            state, detail = "failed", "No audio channel ready"
+        health_registry.update("audio", state, detail, snapshot)
 
     def get_audio_bytes(self) -> bytes:
-        """
-        合成双声道并导出为 WAV 字节流
-        左声道：系统音频，右声道：麦克风音频
-        """
         with self._lock:
-            # 展开环形缓冲区
-            ordered_sys = np.concatenate([
-                self._buffer_sys[self._write_pos_sys:],
-                self._buffer_sys[:self._write_pos_sys]
-            ])
-            ordered_mic = np.concatenate([
-                self._buffer_mic[self._write_pos_mic:],
-                self._buffer_mic[:self._write_pos_mic]
-            ])
+            system_buffer = self._buffer_sys.copy()
+            microphone_buffer = self._buffer_mic.copy()
+            system_position = self._write_pos_sys
+            microphone_position = self._write_pos_mic
+            system_valid = self._valid_frames_sys
+            microphone_valid = self._valid_frames_mic
 
-        # 寻找静音截断点 (找到各自最早的非零点)
-        nonzero_sys = np.nonzero(ordered_sys)[0]
-        nonzero_mic = np.nonzero(ordered_mic)[0]
+        system = self._ordered_valid(
+            system_buffer,
+            system_position,
+            system_valid,
+        )
+        microphone = self._ordered_valid(
+            microphone_buffer,
+            microphone_position,
+            microphone_valid,
+        )
+        frame_count = max(system.size, microphone.size)
+        if frame_count == 0:
+            return b""
 
-        start_idx = self._buffer_size
-        if len(nonzero_sys) > 0:
-            start_idx = min(start_idx, nonzero_sys[0])
-        if len(nonzero_mic) > 0:
-            start_idx = min(start_idx, nonzero_mic[0])
+        system = self._left_pad(system, frame_count)
+        microphone = self._left_pad(microphone, frame_count)
+        active = np.flatnonzero((system != 0) | (microphone != 0))
+        if active.size == 0:
+            return b""
+        first_active = int(active[0])
+        stereo = np.column_stack(
+            (system[first_active:], microphone[first_active:])
+        )
+        pcm_data = (np.clip(stereo, -1.0, 1.0) * 32767).astype(np.int16)
 
-        if start_idx == self._buffer_size:
-            return b""  # 两边全是静音
-
-        final_sys = ordered_sys[start_idx:]
-        final_mic = ordered_mic[start_idx:]
-
-        # 拼成双声道 [frames, 2]
-        stereo = np.column_stack((final_sys, final_mic))
-
-        # 转换为 16-bit PCM
-        pcm_data = (stereo * 32767).astype(np.int16)
-
-        # 写入内存中的 WAV 文件
         wav_buffer = io.BytesIO()
-        with wave.open(wav_buffer, 'wb') as wf:
-            wf.setnchannels(self.channels)
-            wf.setsampwidth(2)  # 16-bit
-            wf.setframerate(self.sample_rate)
-            wf.writeframes(pcm_data.tobytes())
-
+        with wave.open(wav_buffer, "wb") as wav_file:
+            wav_file.setnchannels(self.channels)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(self.sample_rate)
+            wav_file.writeframes(pcm_data.tobytes())
         return wav_buffer.getvalue()
+
+    @staticmethod
+    def _ordered_valid(
+        buffer: np.ndarray,
+        write_position: int,
+        valid_frames: int,
+    ) -> np.ndarray:
+        if valid_frames <= 0:
+            return np.empty(0, dtype=np.float32)
+        valid_frames = min(valid_frames, buffer.size)
+        start = (write_position - valid_frames) % buffer.size
+        end = start + valid_frames
+        if end <= buffer.size:
+            return buffer[start:end]
+        return np.concatenate((buffer[start:], buffer[:end - buffer.size]))
+
+    @staticmethod
+    def _left_pad(samples: np.ndarray, frame_count: int) -> np.ndarray:
+        if samples.size == frame_count:
+            return samples
+        result = np.zeros(frame_count, dtype=np.float32)
+        if samples.size:
+            result[-samples.size:] = samples
+        return result
