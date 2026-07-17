@@ -4,17 +4,12 @@ from __future__ import annotations
 
 import ctypes
 import os
-import random
 import sys
 from ctypes import wintypes
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from AIOverlay.config import DISGUISE_TITLES
-from AIOverlay.utils.diagnostics import get_logger, health_registry
-
-
-logger = get_logger("window_protection")
+from DesktopCompanion.config import WINDOW_TITLE
 
 
 @dataclass(frozen=True)
@@ -22,6 +17,16 @@ class Win32CallResult:
     success: bool
     value: Any = None
     error: int = 0
+
+
+class WindowCompositionAttributeData(ctypes.Structure):
+    """Data passed to SetWindowCompositionAttribute."""
+
+    _fields_ = [
+        ("attribute", ctypes.c_int),
+        ("data", ctypes.c_void_p),
+        ("size", ctypes.c_size_t),
+    ]
 
 
 class Win32WindowApi:
@@ -40,6 +45,11 @@ class Win32WindowApi:
             raise OSError("Win32 window APIs are unavailable")
         self.user32 = ctypes.WinDLL("user32", use_last_error=True)
         self.dwmapi = ctypes.WinDLL("dwmapi", use_last_error=True)
+        self._set_window_composition_attribute = getattr(
+            self.user32,
+            "SetWindowCompositionAttribute",
+            None,
+        )
         self._configure_signatures()
 
     def _configure_signatures(self) -> None:
@@ -95,6 +105,12 @@ class Win32WindowApi:
             wintypes.DWORD,
         ]
         self.user32.SetLayeredWindowAttributes.restype = wintypes.BOOL
+        if self._set_window_composition_attribute is not None:
+            self._set_window_composition_attribute.argtypes = [
+                wintypes.HWND,
+                ctypes.POINTER(WindowCompositionAttributeData),
+            ]
+            self._set_window_composition_attribute.restype = wintypes.BOOL
         self.dwmapi.DwmIsCompositionEnabled.argtypes = [ctypes.POINTER(wintypes.BOOL)]
         self.dwmapi.DwmIsCompositionEnabled.restype = ctypes.c_long
 
@@ -189,13 +205,33 @@ class Win32WindowApi:
             self.user32.SetLayeredWindowAttributes(hwnd, 0, alpha, flag)
         )
 
+    def set_window_composition_attribute(
+        self,
+        hwnd: int,
+        attribute: int,
+        enabled: bool,
+    ) -> Win32CallResult:
+        function = self._set_window_composition_attribute
+        if function is None:
+            return Win32CallResult(False, None, 120)  # ERROR_CALL_NOT_IMPLEMENTED
 
-class StealthManager:
-    """Apply and verify the existing overlay window settings."""
+        value = wintypes.BOOL(enabled)
+        data = WindowCompositionAttributeData(
+            attribute=attribute,
+            data=ctypes.cast(ctypes.byref(value), ctypes.c_void_p),
+            size=ctypes.sizeof(value),
+        )
+        ctypes.set_last_error(0)
+        return self._bool_result(function(hwnd, ctypes.byref(data)))
+
+
+class WindowProtectionManager:
+    """Apply and verify the overlay window protection settings."""
 
     WDA_NONE = 0x00000000
-    WDA_MONITOR = 0x00000001
     WDA_EXCLUDEFROMCAPTURE = 0x00000011
+    WCA_EXCLUDED_FROM_DDA = 24
+    MINIMUM_EXCLUDE_BUILD = 19041
     WS_EX_TOOLWINDOW = 0x00000080
     WS_EX_LAYERED = 0x00080000
     WS_EX_TRANSPARENT = 0x00000020
@@ -210,22 +246,59 @@ class StealthManager:
             except OSError:
                 self.available = False
         self.last_report: dict[str, Any] = {}
-        self._titles: dict[int, str] = {}
 
     @staticmethod
     def _result_data(result: Win32CallResult) -> dict[str, Any]:
         return asdict(result)
 
+    @staticmethod
+    def _failed_results() -> dict[str, bool]:
+        return {
+            "capture_protection": False,
+            "desktop_duplication_exclusion": False,
+            "alt_tab_hidden": False,
+            "title_set": False,
+            "mouse_passthrough": False,
+        }
+
+    @classmethod
+    def results_are_healthy(cls, results: dict[str, Any]) -> bool:
+        required = cls._failed_results()
+        return all(results.get(key) is True for key in required)
+
+    @classmethod
+    def _window_is_supported(cls, window: dict[str, Any]) -> bool:
+        return bool(
+            window.get("valid")
+            and window.get("top_level")
+            and window.get("current_process")
+            and window.get("dwm_enabled")
+            and int(window.get("windows_build", 0)) >= cls.MINIMUM_EXCLUDE_BUILD
+        )
+
     def apply_all_protections(self, hwnd: int) -> dict[str, bool]:
         if not self.available or self.api is None:
             self.last_report = {"available": False}
-            return {"error": "Not available on this platform"}
+            return self._failed_results()
 
         window = {"hwnd": hwnd, **self.api.describe_window(hwnd)}
+        if not self._window_is_supported(window):
+            results = self._failed_results()
+            self.last_report = {
+                "available": True,
+                "window": window,
+                "results": results,
+                "supported": False,
+            }
+            return results
+
         results = {
             "capture_protection": self.set_capture_protection(hwnd, True),
+            "desktop_duplication_exclusion": (
+                self.set_desktop_duplication_exclusion(hwnd, True)
+            ),
             "alt_tab_hidden": self.hide_from_alt_tab(hwnd),
-            "title_disguised": self.set_disguise_title(hwnd),
+            "title_set": self.set_overlay_title(hwnd),
             "mouse_passthrough": self.set_mouse_passthrough(hwnd),
         }
         self.last_report = {
@@ -233,22 +306,8 @@ class StealthManager:
             "available": True,
             "window": window,
             "results": results,
+            "supported": True,
         }
-        state = "healthy" if all(results.values()) else "degraded"
-        health_registry.update(
-            "window_protection",
-            state,
-            "Window protection verified"
-            if state == "healthy"
-            else "Window protection degraded",
-            self.last_report,
-        )
-        logger.info(
-            "Window protection result: %s; diagnostics=%s",
-            results,
-            self.last_report,
-            extra={"component": "window_protection", "event": "applied", "task_id": None},
-        )
         return results
 
     def set_capture_protection(self, hwnd: int, enable: bool = True) -> bool:
@@ -256,19 +315,34 @@ class StealthManager:
             return False
         requested = self.WDA_EXCLUDEFROMCAPTURE if enable else self.WDA_NONE
         exact_set = self.api.set_display_affinity(hwnd, requested)
-        fallback_set = None
-        if enable and not exact_set.success:
-            fallback_set = self.api.set_display_affinity(hwnd, self.WDA_MONITOR)
         query = self.api.get_display_affinity(hwnd)
         exact = query.success and query.value == requested
         self.last_report["capture"] = {
             "requested": requested,
             "set": self._result_data(exact_set),
-            "fallback": self._result_data(fallback_set) if fallback_set else None,
             "query": self._result_data(query),
             "exact": exact,
         }
         return exact
+
+    def set_desktop_duplication_exclusion(
+        self,
+        hwnd: int,
+        enable: bool = True,
+    ) -> bool:
+        if not self.available or self.api is None:
+            return False
+        result = self.api.set_window_composition_attribute(
+            hwnd,
+            self.WCA_EXCLUDED_FROM_DDA,
+            enable,
+        )
+        self.last_report["desktop_duplication"] = {
+            "requested": enable,
+            "set": self._result_data(result),
+            "applied": result.success,
+        }
+        return result.success
 
     def _add_styles(self, hwnd: int, required: int, report_key: str) -> bool:
         if not self.available or self.api is None:
@@ -298,11 +372,10 @@ class StealthManager:
             "mouse_passthrough",
         )
 
-    def set_disguise_title(self, hwnd: int, title: str | None = None) -> bool:
+    def set_overlay_title(self, hwnd: int, title: str | None = None) -> bool:
         if not self.available or self.api is None:
             return False
-        expected = title or self._titles.get(hwnd) or random.choice(DISGUISE_TITLES)
-        self._titles[hwnd] = expected
+        expected = title or WINDOW_TITLE
         set_result = self.api.set_title(hwnd, expected)
         query = self.api.get_title(hwnd)
         verified = set_result.success and query.success and query.value == expected
@@ -322,47 +395,70 @@ class StealthManager:
         return result.success
 
     def verify_or_reapply(self, hwnd: int) -> dict[str, bool]:
-        """Low-frequency self-check used after show and before a request."""
+        """Verify the exact protection state and reapply it when needed."""
         if not self.available or self.api is None:
-            return {"error": "Not available on this platform"}
+            return self._failed_results()
+
+        window = {"hwnd": hwnd, **self.api.describe_window(hwnd)}
+        if not self._window_is_supported(window):
+            results = self._failed_results()
+            self.last_report["verification"] = {
+                "healthy": False,
+                "reapplied": False,
+                "window": window,
+            }
+            return results
+
         capture = self.api.get_display_affinity(hwnd)
         styles = self.api.get_exstyle(hwnd)
         title = self.api.get_title(hwnd)
-        expected_title = self._titles.get(hwnd)
+        desktop_duplication_excluded = self.set_desktop_duplication_exclusion(
+            hwnd,
+            True,
+        )
+        expected_title = WINDOW_TITLE
         required_styles = (
             self.WS_EX_TOOLWINDOW | self.WS_EX_LAYERED | self.WS_EX_TRANSPARENT
         )
         healthy = (
             capture.success
             and capture.value == self.WDA_EXCLUDEFROMCAPTURE
+            and desktop_duplication_excluded
             and styles.success
             and styles.value & required_styles == required_styles
-            and expected_title is not None
             and title.success
             and title.value == expected_title
         )
         if healthy:
             results = {
                 "capture_protection": True,
+                "desktop_duplication_exclusion": True,
                 "alt_tab_hidden": True,
-                "title_disguised": True,
+                "title_set": True,
                 "mouse_passthrough": True,
             }
             self.last_report["verification"] = {"healthy": True, "reapplied": False}
             return results
         results = self.apply_all_protections(hwnd)
         self.last_report["verification"] = {
-            "healthy": all(results.values()),
+            "healthy": self.results_are_healthy(results),
             "reapplied": True,
         }
         return results
+
+    def forget_window(self, hwnd: int) -> None:
+        return None
 
     def remove_all_protections(self, hwnd: int) -> bool:
         if not self.available:
             return False
         capture_removed = self.set_capture_protection(hwnd, False)
+        desktop_duplication_restored = self.set_desktop_duplication_exclusion(
+            hwnd,
+            False,
+        )
         transparency_reset = self.set_transparency(hwnd, 255)
-        return capture_removed and transparency_reset
+        return capture_removed and desktop_duplication_restored and transparency_reset
 
 
-stealth_manager = StealthManager()
+window_protection_manager = WindowProtectionManager()

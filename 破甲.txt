@@ -1,0 +1,10 @@
+以下指令在 powershell 中执行
+
+切换至项目路径
+Set-Location -Path "e:\tmp\gpt-5.6-instruct-main\gpt-5.6-instruct-main"
+
+开启v5破甲
+& "E:\LearningSoftware\Anaconda\AnacondaSoftware\envs\fungi\python.exe" codex-instruct.py --version v5
+
+恢复正常提示词
+& "E:\LearningSoftware\Anaconda\AnacondaSoftware\envs\fungi\python.exe" codex-instruct.py --reset

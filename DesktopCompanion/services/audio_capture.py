@@ -4,20 +4,14 @@ from __future__ import annotations
 
 import io
 import threading
-import time
 import wave
 
 import numpy as np
 import soundcard as sc
 
-from AIOverlay.utils.diagnostics import get_logger, health_registry
-
-
-logger = get_logger("audio_capture")
-
 
 class AudioCapture:
-    """Capture two independent mono sources into one bounded stereo snapshot."""
+    """Capture two mono sources into one bounded stereo WAV snapshot."""
 
     def __init__(
         self,
@@ -48,96 +42,48 @@ class AudioCapture:
 
         self._lock = threading.Lock()
         self._lifecycle_lock = threading.Lock()
-        self._status_lock = threading.Lock()
         self._stop_event = threading.Event()
         self._running = False
         self._thread_sys: threading.Thread | None = None
         self._thread_mic: threading.Thread | None = None
-        self._channel_status = {
-            "system": self._new_channel_status(),
-            "microphone": self._new_channel_status(),
-        }
-
-    @staticmethod
-    def _new_channel_status() -> dict[str, object]:
-        return {
-            "state": "stopped",
-            "ready": False,
-            "failure_count": 0,
-            "last_error": "",
-            "last_sample_at": None,
-        }
 
     def start(self) -> None:
         with self._lifecycle_lock:
             if self._running:
                 return
             if not self._threads_stopped():
-                raise RuntimeError(
-                    "Previous audio capture threads are still stopping"
-                )
+                raise RuntimeError("Previous audio capture threads are still stopping")
+
             self._stop_event.clear()
             self._running = True
-            self._set_channel_status("system", state="starting", ready=False)
-            self._set_channel_status("microphone", state="starting", ready=False)
             self._thread_sys = threading.Thread(
                 target=self._record_channel_loop,
                 args=("system",),
                 daemon=True,
-                name="aioverlay-audio-system",
+            name="desktop-companion-audio-system",
             )
             self._thread_mic = threading.Thread(
                 target=self._record_channel_loop,
                 args=("microphone",),
                 daemon=True,
-                name="aioverlay-audio-microphone",
-            )
-            health_registry.update(
-                "audio",
-                "starting",
-                "Audio capture threads starting",
-                {"sample_rate": self.sample_rate, "buffer_seconds": self.buffer_seconds},
+            name="desktop-companion-audio-microphone",
             )
             self._thread_sys.start()
             self._thread_mic.start()
 
-        logger.info(
-            "Audio capture starting; sample_rate=%d buffer_seconds=%d",
-            self.sample_rate,
-            self.buffer_seconds,
-            extra={"component": "audio", "event": "starting", "task_id": None},
-        )
-        print(f"双轨音频缓冲区已启动 (保留最近 {self.buffer_seconds} 秒立体声)")
+        print(f"\u53cc\u8f68\u97f3\u9891\u7f13\u51b2\u533a\u5df2\u542f\u52a8 (\u4fdd\u7559\u6700\u8fd1 {self.buffer_seconds} \u79d2\u7acb\u4f53\u58f0)")
 
     def stop(self) -> bool:
         with self._lifecycle_lock:
             if not self._running:
                 return self._threads_stopped()
+
             self._running = False
             self._stop_event.set()
-            threads = (self._thread_sys, self._thread_mic)
-            for thread in threads:
+            for thread in (self._thread_sys, self._thread_mic):
                 if thread is not None and thread is not threading.current_thread():
                     thread.join(timeout=2.0)
-
-            stopped = self._threads_stopped()
-            if stopped:
-                self._set_channel_status("system", state="stopped", ready=False)
-                self._set_channel_status("microphone", state="stopped", ready=False)
-                health_registry.update("audio", "stopped", "Audio capture stopped")
-            else:
-                health_registry.update(
-                    "audio",
-                    "degraded",
-                    "Audio capture stop timed out",
-                    self.channel_health_snapshot(),
-                )
-            logger.info(
-                "Audio capture stopped; threads_stopped=%s",
-                stopped,
-                extra={"component": "audio", "event": "stopped", "task_id": None},
-            )
-            return stopped
+            return self._threads_stopped()
 
     def _threads_stopped(self) -> bool:
         return all(
@@ -147,6 +93,8 @@ class AudioCapture:
 
     def _record_channel_loop(self, channel: str) -> None:
         consecutive_failures = 0
+        chunk_frames = max(1, self.sample_rate // 10)
+
         while not self._stop_event.is_set():
             try:
                 source = self._resolve_source(channel)
@@ -155,57 +103,18 @@ class AudioCapture:
                     channels=[0],
                 ) as recorder:
                     consecutive_failures = 0
-                    self._set_channel_status(
-                        channel,
-                        state="healthy",
-                        ready=True,
-                        last_error="",
-                    )
-                    self._update_aggregate_health()
-                    chunk_frames = max(1, self.sample_rate // 10)
                     while not self._stop_event.is_set():
                         data = recorder.record(numframes=chunk_frames)
                         mono = data[:, 0] if data.ndim > 1 else data
                         self._write_samples(channel, mono)
-                        self._set_channel_status(
-                            channel,
-                            state="healthy",
-                            ready=True,
-                            last_sample_at=time.time(),
-                        )
-            except Exception as exc:
+            except Exception:
                 if self._stop_event.is_set():
                     break
                 consecutive_failures += 1
-                with self._status_lock:
-                    total_failures = int(
-                        self._channel_status[channel]["failure_count"]
-                    ) + 1
-                self._set_channel_status(
-                    channel,
-                    state="degraded",
-                    ready=False,
-                    failure_count=total_failures,
-                    last_error=str(exc),
-                )
-                self._update_aggregate_health()
-                if total_failures <= 3 or total_failures % 12 == 0:
-                    logger.exception(
-                        "Audio channel failed; channel=%s failure_count=%d",
-                        channel,
-                        total_failures,
-                        extra={
-                            "component": f"audio_{channel}",
-                            "event": "channel_failed",
-                            "task_id": None,
-                        },
-                    )
                 delay = self._retry_delays[
                     min(consecutive_failures - 1, len(self._retry_delays) - 1)
                 ]
                 self._stop_event.wait(delay)
-
-        self._set_channel_status(channel, state="stopped", ready=False)
 
     def _resolve_source(self, channel: str):
         if channel == "system":
@@ -214,7 +123,9 @@ class AudioCapture:
                 id=str(speaker.name),
                 include_loopback=True,
             )
-        return self._audio_backend.default_microphone()
+        if channel == "microphone":
+            return self._audio_backend.default_microphone()
+        raise ValueError(f"Unknown audio channel: {channel}")
 
     def _write_samples(self, channel: str, samples) -> None:
         mono = np.asarray(samples, dtype=np.float32).reshape(-1)
@@ -241,9 +152,9 @@ class AudioCapture:
             remaining = count - first
             if remaining:
                 buffer[:remaining] = mono[first:]
+
             position = (position + count) % self._buffer_size
             valid_frames = min(self._buffer_size, valid_frames + count)
-
             if channel == "system":
                 self._write_pos_sys = position
                 self._valid_frames_sys = valid_frames
@@ -251,67 +162,19 @@ class AudioCapture:
                 self._write_pos_mic = position
                 self._valid_frames_mic = valid_frames
 
-    def channel_health_snapshot(self) -> dict[str, dict[str, object]]:
-        with self._status_lock:
-            result = {
-                name: dict(status)
-                for name, status in self._channel_status.items()
-            }
-        result["system"]["thread_alive"] = bool(
-            self._thread_sys and self._thread_sys.is_alive()
-        )
-        result["microphone"]["thread_alive"] = bool(
-            self._thread_mic and self._thread_mic.is_alive()
-        )
-        return result
-
-    def _set_channel_status(self, channel: str, **changes: object) -> None:
-        with self._status_lock:
-            self._channel_status[channel].update(changes)
-            status = dict(self._channel_status[channel])
-        health_state = str(status["state"])
-        if health_state not in {"starting", "healthy", "degraded", "stopped"}:
-            health_state = "degraded"
-        health_registry.update(
-            f"audio_{channel}",
-            health_state,
-            str(status["last_error"]),
-            status,
-        )
-
-    def _update_aggregate_health(self) -> None:
-        snapshot = self.channel_health_snapshot()
-        states = [snapshot["system"]["state"], snapshot["microphone"]["state"]]
-        ready_count = sum(bool(snapshot[name]["ready"]) for name in snapshot)
-        if ready_count == 2:
-            state, detail = "healthy", "Both audio channels ready"
-        elif ready_count == 1:
-            state, detail = "degraded", "One audio channel ready"
-        elif "starting" in states:
-            state, detail = "starting", "Audio channels starting"
-        else:
-            state, detail = "failed", "No audio channel ready"
-        health_registry.update("audio", state, detail, snapshot)
-
     def get_audio_bytes(self) -> bytes:
         with self._lock:
-            system_buffer = self._buffer_sys.copy()
-            microphone_buffer = self._buffer_mic.copy()
-            system_position = self._write_pos_sys
-            microphone_position = self._write_pos_mic
-            system_valid = self._valid_frames_sys
-            microphone_valid = self._valid_frames_mic
+            system = self._ordered_valid(
+                self._buffer_sys.copy(),
+                self._write_pos_sys,
+                self._valid_frames_sys,
+            )
+            microphone = self._ordered_valid(
+                self._buffer_mic.copy(),
+                self._write_pos_mic,
+                self._valid_frames_mic,
+            )
 
-        system = self._ordered_valid(
-            system_buffer,
-            system_position,
-            system_valid,
-        )
-        microphone = self._ordered_valid(
-            microphone_buffer,
-            microphone_position,
-            microphone_valid,
-        )
         frame_count = max(system.size, microphone.size)
         if frame_count == 0:
             return b""
@@ -321,10 +184,9 @@ class AudioCapture:
         active = np.flatnonzero((system != 0) | (microphone != 0))
         if active.size == 0:
             return b""
+
         first_active = int(active[0])
-        stereo = np.column_stack(
-            (system[first_active:], microphone[first_active:])
-        )
+        stereo = np.column_stack((system[first_active:], microphone[first_active:]))
         pcm_data = (np.clip(stereo, -1.0, 1.0) * 32767).astype(np.int16)
 
         wav_buffer = io.BytesIO()

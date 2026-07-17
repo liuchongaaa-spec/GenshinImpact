@@ -1,8 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-配置模块 - 统一在 config.py 中配置，不再读取外部 JSON
+配置模块
 """
 import os
+
+
+APP_ID = "desktop_companion"
+APP_DISPLAY_NAME = "Desktop Companion"
+WINDOW_TITLE = APP_DISPLAY_NAME
+TRAY_TOOLTIP = APP_DISPLAY_NAME
 
 
 class InitializationError(Exception):
@@ -11,6 +17,7 @@ class InitializationError(Exception):
 # ================= 外部密钥文件路径 =================
 EXTERNAL_CONFIG_DIR = r"D:\tmp"
 API_KEY_FILE = os.path.join(EXTERNAL_CONFIG_DIR, "GeminiAPIKey.txt")
+DEEPSEEK_API_KEY_FILE = os.path.join(EXTERNAL_CONFIG_DIR, "DeepSeekAPIKey.txt")
 SYSTEM_PROMPT_FILE = os.path.join(EXTERNAL_CONFIG_DIR, "SYSTEM_PROMPT.txt")
 
 # ================= 核心配置 =================
@@ -47,51 +54,56 @@ OVERLAY_CONFIG = {
         "sample_rate": 16000       # 采样率 (Hz)
     },
     "load_test_file": True,           # 启动时是否加载测试文件
-    "test_file_path": os.path.join(os.path.dirname(__file__), "test.txt"), # 测试文件路径
+    "test_file_path": os.path.join(os.path.dirname(__file__), "tests", "test.txt"), # 测试文件路径
     "proxy": "http://127.0.0.1:7897", # 网络代理
     "scroll_step": 80,
     "move_step": 50,
-    "model": "models/gemini-3.5-flash"
+    "ai_provider": "gemini",
+    "model": "gemini-3.1-flash-lite",
+    "deepseek_model": "deepseek-chat",
+    "deepseek_base_url": "https://api.deepseek.com/v1"
 }
 
-# ================= 伪装配置 =================
-DISGUISE_TITLES = [
-    "Windows Update",
-    "系统配置",
-    "设备管理器",
-    "服务",
-    "Windows 安全中心",
-]
+def _read_required_file(path: str, message: str) -> str:
+    if not os.path.exists(path):
+        raise InitializationError(message)
+    with open(path, "r", encoding="utf-8") as file:
+        value = file.read().strip()
+    if not value:
+        raise InitializationError(message)
+    return value
+
+
+def _read_optional_file(path: str) -> str:
+    if not os.path.exists(path):
+        return ""
+    with open(path, "r", encoding="utf-8") as file:
+        return file.read().strip()
 
 
 def _load_external_secrets():
-    """从外部文件加载 API Key 和 System Prompt"""
-    global GEMINI_API_KEY, SYSTEM_PROMPT
+    """Load the selected provider key and the shared system prompt."""
+    global GEMINI_API_KEY, DEEPSEEK_API_KEY, SYSTEM_PROMPT
 
-    # 读取 API Key
-    if not os.path.exists(API_KEY_FILE):
-        raise InitializationError("请配置 API Key !")
+    provider = OVERLAY_CONFIG.get("ai_provider", "gemini").lower()
+    SYSTEM_PROMPT = _read_required_file(SYSTEM_PROMPT_FILE, "\u8bf7\u914d\u7f6e\u7cfb\u7edf\u63d0\u793a\u8bcd\uff01")
 
-    with open(API_KEY_FILE, 'r', encoding='utf-8') as f:
-        GEMINI_API_KEY = f.read().strip()
-
-    if not GEMINI_API_KEY:
-        raise InitializationError("请配置 API Key !")
-
-    # 读取系统提示词
-    if not os.path.exists(SYSTEM_PROMPT_FILE):
-        raise InitializationError("请配置系统提示词！")
-
-    with open(SYSTEM_PROMPT_FILE, 'r', encoding='utf-8') as f:
-        SYSTEM_PROMPT = f.read().strip()
-
-    if not SYSTEM_PROMPT:
-        raise InitializationError("请配置系统提示词！")
+    GEMINI_API_KEY = ""
+    DEEPSEEK_API_KEY = ""
+    if provider == "gemini":
+        GEMINI_API_KEY = _read_required_file(API_KEY_FILE, "\u8bf7\u914d\u7f6e Gemini API Key\uff01")
+        DEEPSEEK_API_KEY = _read_optional_file(DEEPSEEK_API_KEY_FILE)
+    elif provider == "deepseek":
+        DEEPSEEK_API_KEY = _read_required_file(DEEPSEEK_API_KEY_FILE, "\u8bf7\u914d\u7f6e DeepSeek API Key\uff01")
+        GEMINI_API_KEY = _read_optional_file(API_KEY_FILE)
+    else:
+        raise InitializationError(f"\u672a\u77e5 AI \u670d\u52a1\u5546: {provider}")
 
 
-# ================= 初始化 =================
-GEMINI_API_KEY = None
-SYSTEM_PROMPT = None
+# ================= 运行时变量 =================
+GEMINI_API_KEY = ""
+DEEPSEEK_API_KEY = ""
+SYSTEM_PROMPT = ""
 
 # 加载密钥
 _load_external_secrets()
@@ -103,7 +115,10 @@ HOTKEY_CONFIG = OVERLAY_CONFIG["hotkeys"]
 PROXY_URL = OVERLAY_CONFIG.get("proxy", "")
 SCROLL_STEP = OVERLAY_CONFIG["scroll_step"]
 MOVE_STEP = OVERLAY_CONFIG["move_step"]
+AI_PROVIDER = OVERLAY_CONFIG.get("ai_provider", "gemini")
 MODEL_ID = OVERLAY_CONFIG["model"]
+DEEPSEEK_MODEL_ID = OVERLAY_CONFIG.get("deepseek_model", "deepseek-chat")
+DEEPSEEK_BASE_URL = OVERLAY_CONFIG.get("deepseek_base_url", "https://api.deepseek.com/v1")
 LOAD_TEST_FILE = OVERLAY_CONFIG.get("load_test_file", False)
 TEST_FILE_PATH = OVERLAY_CONFIG.get("test_file_path", "")
 AUDIO_CONFIG = OVERLAY_CONFIG.get("audio", {})

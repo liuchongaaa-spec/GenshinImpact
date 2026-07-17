@@ -5,7 +5,8 @@
 from PyQt5.QtWidgets import QSystemTrayIcon, QMenu, QAction, QApplication
 from PyQt5.QtGui import QIcon
 from PyQt5.QtCore import QObject
-import sys
+
+from DesktopCompanion.config import TRAY_TOOLTIP
 
 
 class TrayManager(QObject):
@@ -26,8 +27,7 @@ class TrayManager(QObject):
         self.tray = QSystemTrayIcon(self.main_window)
         self.tray.setIcon(QIcon())
 
-        # 伪装的提示文本
-        self.tray.setToolTip("Windows 服务")
+        self.tray.setToolTip(TRAY_TOOLTIP)
 
         # 创建右键菜单
         menu = QMenu()
@@ -47,15 +47,11 @@ class TrayManager(QObject):
 
     def _toggle_window(self):
         """切换窗口显示/隐藏"""
-        if self.main_window.isVisible():
-            self.main_window.hide()
-        else:
-            self.main_window.showNormal()
-            self.main_window.activateWindow()
+        self.main_window.toggle_visibility()
 
     def _exit_app(self):
         """退出应用"""
-        self.hide()
+        self.main_window.shutdown()
         QApplication.quit()
 
     def _on_tray_activated(self, reason):
