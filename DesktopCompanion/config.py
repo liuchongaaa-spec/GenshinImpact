@@ -15,7 +15,7 @@ class InitializationError(Exception):
     """Raised when required startup configuration is unavailable."""
 
 # ================= 外部密钥文件路径 =================
-EXTERNAL_CONFIG_DIR = r"D:\tmp"
+EXTERNAL_CONFIG_DIR = r"D:\tmp\GenshinImpact\configs"
 API_KEY_FILE = os.path.join(EXTERNAL_CONFIG_DIR, "GeminiAPIKey.txt")
 DEEPSEEK_API_KEY_FILE = os.path.join(EXTERNAL_CONFIG_DIR, "DeepSeekAPIKey.txt")
 SYSTEM_PROMPT_FILE = os.path.join(EXTERNAL_CONFIG_DIR, "SYSTEM_PROMPT.txt")
@@ -35,7 +35,7 @@ OVERLAY_CONFIG = {
         "bg_color": "transparent", # 为空或 transparent 就不显示背景框了
         "font_size": 10,           # 字体大小
         "line_height": 1.1,        # 行间距 (1.0 - 2.0)
-        "text_opacity": 0.90,        # 文字透明度 (0.0 - 1.0)
+        "text_opacity": 1.0,        # 文字透明度 (0.0 - 1.0)
         "padding_lines": 20        # 回答前后的空行数量
     },  
     "hotkeys": {
@@ -50,7 +50,7 @@ OVERLAY_CONFIG = {
         "audio_capture": "caps lock+u"
     },
     "audio": {
-        "buffer_seconds": 60,      # 滚动缓冲区保留的秒数
+        "buffer_seconds": 45,      # 滚动缓冲区保留的秒数
         "sample_rate": 16000       # 采样率 (Hz)
     },
     "load_test_file": True,           # 启动时是否加载测试文件

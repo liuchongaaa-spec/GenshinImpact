@@ -20,3 +20,6 @@ Thumbs.db
 
 # Project Specific
 temp_capture_stream.wav
+
+# Local secrets
+/configs/GeminiAPIKey.txt
