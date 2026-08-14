@@ -227,8 +227,8 @@ class ApplicationController(QObject):
     @staticmethod
     def _format_error(kind: str, exc: Exception) -> str:
         if isinstance(exc, AudioBufferEmpty):
-            return "\u97f3\u9891\u7f13\u51b2\u533a\u4e3a\u7a7a\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5\u3002"
-        prefix = "\u622a\u56fe\u5904\u7406\u9519\u8bef" if kind == "screenshot" else "\u97f3\u9891\u5904\u7406\u9519\u8bef"
+            return "音频缓冲区为空，请稍后再试。"
+        prefix = "截图处理错误" if kind == "screenshot" else "音频处理错误"
         return f"{prefix}: {exc}"
 
     def _close_ai(self) -> None:

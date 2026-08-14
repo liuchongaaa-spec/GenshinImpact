@@ -71,7 +71,7 @@ class AudioCapture:
             self._thread_sys.start()
             self._thread_mic.start()
 
-        print(f"\u53cc\u8f68\u97f3\u9891\u7f13\u51b2\u533a\u5df2\u542f\u52a8 (\u4fdd\u7559\u6700\u8fd1 {self.buffer_seconds} \u79d2\u7acb\u4f53\u58f0)")
+        print(f"双轨音频缓冲区已启动 (保留最近 {self.buffer_seconds} 秒立体声)")
 
     def stop(self) -> bool:
         with self._lifecycle_lock:

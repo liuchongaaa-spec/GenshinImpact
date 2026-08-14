@@ -21,7 +21,6 @@ DEEPSEEK_API_KEY_FILE = os.path.join(EXTERNAL_CONFIG_DIR, "DeepSeekAPIKey.txt")
 SYSTEM_PROMPT_FILE = os.path.join(EXTERNAL_CONFIG_DIR, "SYSTEM_PROMPT——1.txt")
 
 # ================= 核心配置 =================
-# 直接在此处修改配置，重启生效
 OVERLAY_CONFIG = {
     "window": {
         "x": 600,           # 窗口左上角 X 坐标
@@ -92,18 +91,18 @@ def _load_external_secrets():
     global GEMINI_API_KEY, DEEPSEEK_API_KEY, SYSTEM_PROMPT
 
     provider = OVERLAY_CONFIG.get("ai_provider", "gemini").lower()
-    SYSTEM_PROMPT = _read_required_file(SYSTEM_PROMPT_FILE, "\u8bf7\u914d\u7f6e\u7cfb\u7edf\u63d0\u793a\u8bcd\uff01")
+    SYSTEM_PROMPT = _read_required_file(SYSTEM_PROMPT_FILE, "请配置系统提示词！")
 
     GEMINI_API_KEY = ""
     DEEPSEEK_API_KEY = ""
     if provider == "gemini":
-        GEMINI_API_KEY = _read_required_file(API_KEY_FILE, "\u8bf7\u914d\u7f6e Gemini API Key\uff01")
+        GEMINI_API_KEY = _read_required_file(API_KEY_FILE, "请配置 Gemini API Key！")
         DEEPSEEK_API_KEY = _read_optional_file(DEEPSEEK_API_KEY_FILE)
     elif provider == "deepseek":
-        DEEPSEEK_API_KEY = _read_required_file(DEEPSEEK_API_KEY_FILE, "\u8bf7\u914d\u7f6e DeepSeek API Key\uff01")
+        DEEPSEEK_API_KEY = _read_required_file(DEEPSEEK_API_KEY_FILE, "请配置 DeepSeek API Key！")
         GEMINI_API_KEY = _read_optional_file(API_KEY_FILE)
     else:
-        raise InitializationError(f"\u672a\u77e5 AI \u670d\u52a1\u5546: {provider}")
+        raise InitializationError(f"未知 AI 服务商: {provider}")
 
 
 # ================= 运行时变量 =================
