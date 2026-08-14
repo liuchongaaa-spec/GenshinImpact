@@ -63,6 +63,8 @@ OVERLAY_CONFIG = {
         "gemini-3.5-flash-lite",
         "gemini-3.1-flash-lite",
     ],
+    # 单个模型一次请求允许连续等待响应的时间
+    "gemini_model_timeout_seconds": 60,
     "max_history_turns": 6,
     "deepseek_model": "deepseek-chat",
     "deepseek_base_url": "https://api.deepseek.com/v1"
@@ -123,6 +125,9 @@ AI_PROVIDER = OVERLAY_CONFIG.get("ai_provider", "gemini")
 GEMINI_MODEL_IDS = tuple(OVERLAY_CONFIG.get("gemini_models", ()))
 if not GEMINI_MODEL_IDS:
     raise InitializationError("请至少配置一个 Gemini 模型！")
+GEMINI_MODEL_TIMEOUT_SECONDS = max(
+    1.0, float(OVERLAY_CONFIG.get("gemini_model_timeout_seconds", 60))
+)
 MAX_HISTORY_TURNS = max(0, int(OVERLAY_CONFIG.get("max_history_turns", 6)))
 DEEPSEEK_MODEL_ID = OVERLAY_CONFIG.get("deepseek_model", "deepseek-chat")
 DEEPSEEK_BASE_URL = OVERLAY_CONFIG.get("deepseek_base_url", "https://api.deepseek.com/v1")

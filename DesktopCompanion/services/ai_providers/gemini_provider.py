@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import httpx
 from google import genai
 from google.genai import errors, types
 
@@ -89,8 +90,8 @@ class GeminiProvider:
                 )
         return False
 
-    def create_session(self) -> bool:
-        model_id = self.current_model_id
+    def create_session(self, model_id: str | None = None) -> bool:
+        model_id = model_id or self.current_model_id
         self.chat = self.client.chats.create(
             model=model_id,
             config=types.GenerateContentConfig(
@@ -119,11 +120,10 @@ class GeminiProvider:
                 )
             )
 
-        model_count = len(self.model_ids)
-        for attempt_index in range(model_count):
-            model_id = self.current_model_id
+        candidate_models = list(self.model_ids)
+        for attempt_index, model_id in enumerate(candidate_models):
             if self.chat is None or self.chat_model_id != model_id:
-                self.create_session()
+                self.create_session(model_id)
 
             try:
                 chunks: list[str] = []
@@ -134,14 +134,19 @@ class GeminiProvider:
             except Exception as exc:
                 self.chat = None
                 self.chat_model_id = None
-                if not self._should_try_next_model(exc):
+                timed_out = isinstance(exc, (TimeoutError, httpx.TimeoutException))
+                model_unavailable = self._should_try_next_model(exc)
+                if not timed_out and not model_unavailable:
                     raise
-                self._move_model_to_end(model_id)
-                if attempt_index == model_count - 1:
+                if model_unavailable:
+                    self._move_model_to_end(model_id)
+                if attempt_index == len(candidate_models) - 1:
                     raise
+                reason = "请求超时" if timed_out else "暂时不可用"
+                next_model_id = candidate_models[attempt_index + 1]
                 print(
-                    f"模型 {model_id} 暂时不可用，"
-                    f"当前请求切换到 {self.current_model_id}"
+                    f"模型 {model_id} {reason}，"
+                    f"当前请求切换到 {next_model_id}"
                 )
                 continue
 
@@ -154,8 +159,9 @@ class GeminiProvider:
         raise RuntimeError("No Gemini model completed the request")
 
     def _move_model_to_end(self, model_id: str) -> None:
-        if self.model_ids[0] == model_id:
-            self.model_ids.append(self.model_ids.pop(0))
+        if model_id in self.model_ids:
+            self.model_ids.remove(model_id)
+            self.model_ids.append(model_id)
 
     @staticmethod
     def _should_try_next_model(error: Exception) -> bool:

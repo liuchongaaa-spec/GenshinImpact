@@ -8,6 +8,7 @@ from DesktopCompanion.config import (
     DEEPSEEK_BASE_URL,
     DEEPSEEK_MODEL_ID,
     GEMINI_API_KEY,
+    GEMINI_MODEL_TIMEOUT_SECONDS,
     GEMINI_MODEL_IDS,
     MAX_HISTORY_TURNS,
     PROXY_URL,
@@ -29,6 +30,7 @@ def create_ai_provider(
             api_key=GEMINI_API_KEY,
             system_prompt=SYSTEM_PROMPT,
             model_ids=GEMINI_MODEL_IDS,
+            timeout_seconds=GEMINI_MODEL_TIMEOUT_SECONDS,
             max_history_turns=MAX_HISTORY_TURNS,
             network_transport=transport,
         )
