@@ -14,6 +14,10 @@ class AIService:
     def provider_name(self) -> str:
         return getattr(self.provider, "name", AI_PROVIDER)
 
+    @property
+    def current_model_id(self) -> str:
+        return getattr(self.provider, "current_model_id", "")
+
     def check_availability(self) -> bool:
         return self.provider.check_availability()
 

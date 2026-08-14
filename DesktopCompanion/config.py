@@ -59,7 +59,13 @@ OVERLAY_CONFIG = {
     "scroll_step": 80,
     "move_step": 50,
     "ai_provider": "gemini",
-    "model": "gemini-3.1-flash-lite",
+    "gemini_models": [
+        "gemini-3.6-flash",
+        "gemini-3.5-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-3.1-flash-lite",
+    ],
+    "max_history_turns": 6,
     "deepseek_model": "deepseek-chat",
     "deepseek_base_url": "https://api.deepseek.com/v1"
 }
@@ -116,7 +122,10 @@ PROXY_URL = OVERLAY_CONFIG.get("proxy", "")
 SCROLL_STEP = OVERLAY_CONFIG["scroll_step"]
 MOVE_STEP = OVERLAY_CONFIG["move_step"]
 AI_PROVIDER = OVERLAY_CONFIG.get("ai_provider", "gemini")
-MODEL_ID = OVERLAY_CONFIG["model"]
+GEMINI_MODEL_IDS = tuple(OVERLAY_CONFIG.get("gemini_models", ()))
+if not GEMINI_MODEL_IDS:
+    raise InitializationError("请至少配置一个 Gemini 模型！")
+MAX_HISTORY_TURNS = max(0, int(OVERLAY_CONFIG.get("max_history_turns", 6)))
 DEEPSEEK_MODEL_ID = OVERLAY_CONFIG.get("deepseek_model", "deepseek-chat")
 DEEPSEEK_BASE_URL = OVERLAY_CONFIG.get("deepseek_base_url", "https://api.deepseek.com/v1")
 LOAD_TEST_FILE = OVERLAY_CONFIG.get("load_test_file", False)

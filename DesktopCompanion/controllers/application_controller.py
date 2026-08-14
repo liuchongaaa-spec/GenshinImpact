@@ -42,6 +42,10 @@ class ApplicationController(QObject):
         self._started = False
         self._worker: threading.Thread | None = None
 
+    @property
+    def current_model_id(self) -> str:
+        return self.ai_service.current_model_id
+
     def start(self) -> None:
         with self._lock:
             if self._started:
@@ -50,9 +54,9 @@ class ApplicationController(QObject):
             if self.ai_service.provider_name == "gemini":
                 try:
                     self.ai_service.check_availability()
-                    print("AI 服务正常")
+                    print(f"Gemini AI 服务可用，当前优先模型: {self.current_model_id}")
                 except Exception as exc:
-                    print(f"AI 服务异常: {exc}")
+                    print(f"Gemini AI 服务检查失败，程序将继续启动: {exc}")
             self.ai_service.create_session()
             self.audio_capture.start()
         except Exception:

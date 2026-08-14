@@ -21,7 +21,6 @@ from PyQt5.QtWidgets import (
 from DesktopCompanion.config import (
     HOTKEY_CONFIG,
     LOAD_TEST_FILE,
-    MODEL_ID,
     MOVE_STEP,
     SCROLL_STEP,
     TEST_FILE_PATH,
@@ -143,7 +142,7 @@ class OverlayAssistant(QMainWindow):
         self._shutdown_started = False
 
         self.controller.start()
-        print(f"初始化完成！当前使用的模型是: {MODEL_ID}")
+        print(f"初始化完成！当前优先模型是: {self.controller.current_model_id}")
         self._init_ui()
         self._connect_signals()
         self._setup_window_protection()

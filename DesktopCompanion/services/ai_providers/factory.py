@@ -8,7 +8,8 @@ from DesktopCompanion.config import (
     DEEPSEEK_BASE_URL,
     DEEPSEEK_MODEL_ID,
     GEMINI_API_KEY,
-    MODEL_ID,
+    GEMINI_MODEL_IDS,
+    MAX_HISTORY_TURNS,
     PROXY_URL,
     SYSTEM_PROMPT,
 )
@@ -27,7 +28,8 @@ def create_ai_provider(
         return GeminiProvider(
             api_key=GEMINI_API_KEY,
             system_prompt=SYSTEM_PROMPT,
-            model_id=MODEL_ID,
+            model_ids=GEMINI_MODEL_IDS,
+            max_history_turns=MAX_HISTORY_TURNS,
             network_transport=transport,
         )
     if provider == "deepseek":
