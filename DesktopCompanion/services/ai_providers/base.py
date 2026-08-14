@@ -16,6 +16,9 @@ class AIRequest:
 class AIProvider(Protocol):
     name: str
 
+    def check_availability(self) -> bool:
+        ...
+
     def create_session(self) -> bool:
         ...
 

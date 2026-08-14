@@ -18,7 +18,7 @@ class InitializationError(Exception):
 EXTERNAL_CONFIG_DIR = r"D:\tmp\GenshinImpact\configs"
 API_KEY_FILE = os.path.join(EXTERNAL_CONFIG_DIR, "GeminiAPIKey.txt")
 DEEPSEEK_API_KEY_FILE = os.path.join(EXTERNAL_CONFIG_DIR, "DeepSeekAPIKey.txt")
-SYSTEM_PROMPT_FILE = os.path.join(EXTERNAL_CONFIG_DIR, "SYSTEM_PROMPT.txt")
+SYSTEM_PROMPT_FILE = os.path.join(EXTERNAL_CONFIG_DIR, "SYSTEM_PROMPT——1.txt")
 
 # ================= 核心配置 =================
 # 直接在此处修改配置，重启生效
@@ -33,7 +33,7 @@ OVERLAY_CONFIG = {
     "text": {
         "font_color": "#3690F7",  # 绿色文字
         "bg_color": "transparent", # 为空或 transparent 就不显示背景框了
-        "font_size": 10,           # 字体大小
+        "font_size": 11,           # 字体大小
         "line_height": 1.1,        # 行间距 (1.0 - 2.0)
         "text_opacity": 1.0,        # 文字透明度 (0.0 - 1.0)
         "padding_lines": 20        # 回答前后的空行数量

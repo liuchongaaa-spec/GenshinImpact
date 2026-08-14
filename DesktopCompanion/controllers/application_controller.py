@@ -47,6 +47,12 @@ class ApplicationController(QObject):
             if self._started:
                 return
         try:
+            if self.ai_service.provider_name == "gemini":
+                try:
+                    self.ai_service.check_availability()
+                    print("AI 服务正常")
+                except Exception as exc:
+                    print(f"AI 服务异常: {exc}")
             self.ai_service.create_session()
             self.audio_capture.start()
         except Exception:

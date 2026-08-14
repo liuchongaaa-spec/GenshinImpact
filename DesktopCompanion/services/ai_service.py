@@ -14,6 +14,9 @@ class AIService:
     def provider_name(self) -> str:
         return getattr(self.provider, "name", AI_PROVIDER)
 
+    def check_availability(self) -> bool:
+        return self.provider.check_availability()
+
     def create_session(self) -> bool:
         return self.provider.create_session()
 

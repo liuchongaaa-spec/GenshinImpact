@@ -40,6 +40,29 @@ class GeminiProvider:
         self.chat = None
         self.history = []
 
+    def check_availability(self) -> bool:
+        """Send a minimal request to verify the configured Gemini model."""
+        self.network_transport.ensure_available()
+        self.client.models.generate_content(
+            model=self.model_id,
+            contents="Service health check. Reply with OK.",
+            config=types.GenerateContentConfig(
+                max_output_tokens=8,
+                http_options=types.HttpOptions(
+                    timeout=10_000,
+                    retry_options=types.HttpRetryOptions(
+                        attempts=3,
+                        initial_delay=1.0,
+                        max_delay=4.0,
+                        exp_base=2.0,
+                        jitter=0.2,
+                        http_status_codes=[408, 429, 500, 502, 503, 504],
+                    ),
+                ),
+            ),
+        )
+        return True
+
     def create_session(self) -> bool:
         self.chat = self.client.chats.create(
             model=self.model_id,
