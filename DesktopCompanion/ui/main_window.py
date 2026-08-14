@@ -46,14 +46,14 @@ class WorkerSignals(QObject):
 FONT_FAMILY = "Consolas"
 
 
-def build_main_style(font_color: str = "#333333", bg_color: str = "rgba(255, 255, 255, 0.7)", font_size: int = 13) -> str:
+def build_main_style(font_color: str = "#333333", font_size: int = 13) -> str:
     return f"""
         QWidget#MainFrame {{
             background-color: transparent;
             border: none;
         }}
         QTextEdit {{
-            background-color: {bg_color};
+            background-color: transparent;
             color: {font_color};
             border: none;
             border-radius: 4px;
@@ -130,7 +130,7 @@ class OverlayAssistant(QMainWindow):
         self.tray_manager = None
         self.protection_service = window_protection_manager
         self.controller = controller or create_default_controller()
-        self._target_window_opacity = float(WINDOW_CONFIG["opacity"])
+        self._target_window_opacity = 1.0
         self._protection_healthy = sys.platform != "win32"
         self._visibility_requested = False
         self._protected_hwnd = None
@@ -340,9 +340,11 @@ class OverlayAssistant(QMainWindow):
             | Qt.WindowTransparentForInput
         )
         self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAutoFillBackground(False)
 
         central_widget = QWidget()
         central_widget.setObjectName("MainFrame")
+        central_widget.setAutoFillBackground(False)
 
         final_font_color = _to_rgba(
             TEXT_CONFIG["font_color"],
@@ -350,7 +352,6 @@ class OverlayAssistant(QMainWindow):
         )
         style = build_main_style(
             font_color=final_font_color,
-            bg_color=TEXT_CONFIG.get("bg_color", "rgba(255, 255, 255, 0.7)"),
             font_size=TEXT_CONFIG["font_size"],
         )
         central_widget.setStyleSheet(style)
@@ -360,6 +361,8 @@ class OverlayAssistant(QMainWindow):
         main_layout.setSpacing(0)
 
         self.text_area = QTextEdit()
+        self.text_area.setAutoFillBackground(False)
+        self.text_area.viewport().setAutoFillBackground(False)
         self.text_area.setReadOnly(True)
         self.text_area.setPlaceholderText("Ready. Press Alt+S to capture screen.")
         self.text_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -383,8 +386,7 @@ class OverlayAssistant(QMainWindow):
         print(
             "尝试应用窗口配置: "
             f"x={window_config['x']}, y={window_config['y']}, "
-            f"w={window_config['width']}, h={window_config['height']}, "
-            f"opacity={window_config['opacity']}"
+            f"w={window_config['width']}, h={window_config['height']}"
         )
         self.setGeometry(
             window_config["x"],

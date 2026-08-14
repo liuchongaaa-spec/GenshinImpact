@@ -27,12 +27,10 @@ OVERLAY_CONFIG = {
         "x": 600,           # 窗口左上角 X 坐标
         "y": 100,           # 窗口左上角 Y 坐标
         "width": 600,        # 窗口宽度
-        "height": 700,       # 窗口高度
-        "opacity": 0.3      # 窗口透明度 (0.0 - 1.0)]
+        "height": 700        # 窗口高度
     },
     "text": {
         "font_color": "#3690F7",  # 绿色文字
-        "bg_color": "transparent", # 为空或 transparent 就不显示背景框了
         "font_size": 11,           # 字体大小
         "line_height": 1.1,        # 行间距 (1.0 - 2.0)
         "text_opacity": 1.0,        # 文字透明度 (0.0 - 1.0)
