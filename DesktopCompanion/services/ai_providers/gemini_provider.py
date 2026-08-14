@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 from google import genai
 from google.genai import errors, types
@@ -46,6 +48,8 @@ class GeminiProvider:
         )
         self.chat = None
         self.chat_model_id = None
+        self.async_chat = None
+        self.async_chat_model_id = None
         self.history = []
 
     @property
@@ -158,6 +162,72 @@ class GeminiProvider:
 
         raise RuntimeError("No Gemini model completed the request")
 
+    async def send_async(self, request: AIRequest) -> str:
+        self.network_transport.ensure_available()
+        parts = [types.Part.from_text(text=request.prompt)]
+        if request.image_bytes:
+            parts.append(
+                types.Part.from_bytes(
+                    data=request.image_bytes,
+                    mime_type="image/jpeg",
+                )
+            )
+        if request.audio_bytes:
+            parts.append(
+                types.Part.from_bytes(
+                    data=request.audio_bytes,
+                    mime_type="audio/wav",
+                )
+            )
+
+        candidate_models = list(self.model_ids)
+        for attempt_index, model_id in enumerate(candidate_models):
+            self.async_chat = self.client.aio.chats.create(
+                model=model_id,
+                config=types.GenerateContentConfig(
+                    system_instruction=self.system_prompt,
+                ),
+                history=list(self.history),
+            )
+            self.async_chat_model_id = model_id
+
+            try:
+                chunks: list[str] = []
+                stream = await self.async_chat.send_message_stream(parts)
+                async for chunk in stream:
+                    if chunk.text:
+                        chunks.append(chunk.text)
+                full_text = "".join(chunks)
+            except asyncio.CancelledError:
+                self.async_chat = None
+                self.async_chat_model_id = None
+                raise
+            except Exception as exc:
+                self.async_chat = None
+                self.async_chat_model_id = None
+                timed_out = isinstance(exc, (TimeoutError, httpx.TimeoutException))
+                model_unavailable = self._should_try_next_model(exc)
+                if not timed_out and not model_unavailable:
+                    raise
+                if model_unavailable:
+                    self._move_model_to_end(model_id)
+                if attempt_index == len(candidate_models) - 1:
+                    raise
+                reason = "请求超时" if timed_out else "暂时不可用"
+                next_model_id = candidate_models[attempt_index + 1]
+                print(
+                    f"模型 {model_id} {reason}，"
+                    f"当前请求切换到 {next_model_id}"
+                )
+                continue
+
+            self._update_history(request.prompt, full_text)
+            self.async_chat = None
+            self.async_chat_model_id = None
+            return full_text
+
+        raise RuntimeError("No Gemini model completed the request")
+
     def _move_model_to_end(self, model_id: str) -> None:
         if model_id in self.model_ids:
             self.model_ids.remove(model_id)
@@ -187,3 +257,12 @@ class GeminiProvider:
             close()
         self.chat = None
         self.chat_model_id = None
+        self.async_chat = None
+        self.async_chat_model_id = None
+
+    async def close_async(self) -> None:
+        async_client = getattr(self.client, "aio", None)
+        close_async = getattr(async_client, "aclose", None)
+        if callable(close_async):
+            await close_async()
+        self.close()

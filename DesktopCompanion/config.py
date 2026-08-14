@@ -34,7 +34,7 @@ OVERLAY_CONFIG = {
         "font_size": 11,           # 字体大小
         "line_height": 1.1,        # 行间距 (1.0 - 2.0)
         "text_opacity": 1.0,        # 文字透明度 (0.0 - 1.0)
-        "padding_lines": 20        # 回答前后的空行数量
+        "padding_lines": 10        # 回答前后的空行数量
     },  
     "hotkeys": {
         "toggle_visible": "caps lock+m",
