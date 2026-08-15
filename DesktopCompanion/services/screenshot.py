@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import io
 from collections.abc import Callable
+from datetime import datetime
+from pathlib import Path
+from uuid import uuid4
 
 from PIL import Image, ImageGrab
 
@@ -15,8 +18,13 @@ class ScreenshotCaptureError(RuntimeError):
 class PillowScreenshotProvider:
     """Capture the primary desktop as JPEG bytes."""
 
-    def __init__(self, grabber: Callable[..., Image.Image] | None = None) -> None:
+    def __init__(
+        self,
+        grabber: Callable[..., Image.Image] | None = None,
+        save_dir: str = "",
+    ) -> None:
         self._grabber = grabber or ImageGrab.grab
+        self._save_dir = Path(save_dir) if save_dir else None
 
     def capture_jpeg(self) -> bytes:
         image: Image.Image | None = None
@@ -48,3 +56,23 @@ class PillowScreenshotProvider:
         finally:
             if image is not None:
                 image.close()
+
+    def save_jpeg(self, image_bytes: bytes) -> Path | None:
+        if self._save_dir is None:
+            return None
+        if not image_bytes:
+            raise ScreenshotCaptureError("Screenshot JPEG is empty")
+
+        now = datetime.now()
+        daily_dir = self._save_dir / now.strftime("%Y-%m-%d")
+        daily_dir.mkdir(parents=True, exist_ok=True)
+
+        while True:
+            filename = f"{now:%H-%M-%S-%f}-{uuid4().hex[:8]}.jpg"
+            output_path = daily_dir / filename
+            try:
+                with output_path.open("xb") as output:
+                    output.write(image_bytes)
+                return output_path
+            except FileExistsError:
+                continue

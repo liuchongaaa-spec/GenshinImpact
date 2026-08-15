@@ -9,7 +9,7 @@ from typing import Awaitable, Callable
 
 from PyQt5.QtCore import QObject, pyqtSignal
 
-from DesktopCompanion.config import AUDIO_CONFIG
+from DesktopCompanion.config import AUDIO_CONFIG, SCREENSHOT_SAVE_DIR
 from DesktopCompanion.services.ai_providers import AIRequest
 from DesktopCompanion.services.ai_service import AIService
 from DesktopCompanion.services.audio_capture import AudioCapture
@@ -160,7 +160,7 @@ class ApplicationController(QObject):
                     self._active_future = None
 
     async def _run_screenshot(self) -> str:
-        image_bytes = self.screenshot_provider.capture_jpeg()
+        image_bytes = self._capture_screenshot()
         return await self._send_to_ai(
             AIRequest(
                 prompt="请识别当前截图中的面试题目，并严格按照系统提示词的要求给出答案。",
@@ -173,7 +173,7 @@ class ApplicationController(QObject):
         if not audio_bytes:
             raise AudioBufferEmpty("Audio buffer empty")
 
-        image_bytes = self.screenshot_provider.capture_jpeg()
+        image_bytes = self._capture_screenshot()
         return await self._send_to_ai(
             AIRequest(
                 prompt=(
@@ -188,6 +188,16 @@ class ApplicationController(QObject):
     async def _send_to_ai(self, request: AIRequest) -> str:
         markdown = await self.ai_service.send_async(request)
         return markdown_to_html(markdown) if markdown else ""
+
+    def _capture_screenshot(self) -> bytes:
+        image_bytes = self.screenshot_provider.capture_jpeg()
+        save_jpeg = getattr(self.screenshot_provider, "save_jpeg", None)
+        if callable(save_jpeg):
+            try:
+                save_jpeg(image_bytes)
+            except Exception as exc:
+                print(f"截图保存失败: {exc}")
+        return image_bytes
 
     def _start_request_loop(self) -> None:
         ready = threading.Event()
@@ -245,5 +255,5 @@ def create_default_controller() -> ApplicationController:
             buffer_seconds=AUDIO_CONFIG.get("buffer_seconds", 45),
             sample_rate=AUDIO_CONFIG.get("sample_rate", 16000),
         ),
-        PillowScreenshotProvider(),
+        PillowScreenshotProvider(save_dir=SCREENSHOT_SAVE_DIR),
     )

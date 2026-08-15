@@ -52,6 +52,7 @@ OVERLAY_CONFIG = {
     },
     "load_test_file": True,           # 启动时是否加载测试文件
     "test_file_path": os.path.join(os.path.dirname(__file__), "tests", "test.txt"), # 测试文件路径
+    "screenshot_save_dir": r"D:\tmp\GenshinImpact\pic",
     "proxy": "http://127.0.0.1:7897", # 网络代理
     "scroll_step": 80,
     "move_step": 50,
@@ -132,4 +133,5 @@ DEEPSEEK_MODEL_ID = OVERLAY_CONFIG.get("deepseek_model", "deepseek-chat")
 DEEPSEEK_BASE_URL = OVERLAY_CONFIG.get("deepseek_base_url", "https://api.deepseek.com/v1")
 LOAD_TEST_FILE = OVERLAY_CONFIG.get("load_test_file", False)
 TEST_FILE_PATH = OVERLAY_CONFIG.get("test_file_path", "")
+SCREENSHOT_SAVE_DIR = OVERLAY_CONFIG.get("screenshot_save_dir", "")
 AUDIO_CONFIG = OVERLAY_CONFIG.get("audio", {})
