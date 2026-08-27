@@ -7,7 +7,6 @@ import base64
 import httpx
 
 from DesktopCompanion.services.ai_providers.base import AIRequest
-from DesktopCompanion.services.network_transport import NetworkTransport
 
 
 class DeepSeekProvider:
@@ -20,7 +19,6 @@ class DeepSeekProvider:
         system_prompt: str,
         model_id: str = "deepseek-chat",
         base_url: str = "https://api.deepseek.com/v1",
-        network_transport: NetworkTransport,
         timeout_seconds: float = 60.0,
         max_history_requests: int = 6,
     ) -> None:
@@ -30,14 +28,12 @@ class DeepSeekProvider:
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
         self.max_history_requests = max(0, max_history_requests)
-        self.network_transport = network_transport
         self.history: list[dict[str, str]] = []
 
     def create_session(self) -> bool:
         return True
 
     def send(self, request: AIRequest) -> str:
-        self.network_transport.ensure_available()
         if request.audio_bytes:
             raise RuntimeError("当前 DeepSeek Provider 未配置音频输入能力。")
 
@@ -59,7 +55,7 @@ class DeepSeekProvider:
 
         with httpx.Client(
             timeout=self.timeout_seconds,
-            **self.network_transport.httpx_client_kwargs(),
+            trust_env=False,
         ) as client:
             response = client.post(
                 f"{self.base_url}/chat/completions",

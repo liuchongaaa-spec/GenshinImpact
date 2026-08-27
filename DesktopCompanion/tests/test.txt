@@ -1,53 +1,20 @@
-package practices.practice5;
+先别写代码。读 @README.md 和 @sample_testcases，你的上下文有限，
+把分析结果直接写入以下两个文件（不要在对话里输出，节省 token）：
 
-public class problem23 {
-    public static void main(String[] args) {
+@spec.md：
+① 硬约束清单（尤其反直觉的，全部列出，编号 C1、C2...）
+② 每个接口的入参/出参/失败返回（分组列表）
+③ 最容易翻车的点（编号 R1、R2...）
 
-    }
+@ tasks.md：
+④ 5-8 个子任务，每个 [ ] 开头，按依赖顺序排列
+   格式：- [ ] T1: 任务描述（依赖：无 / T0）
 
-    //采用分治的思想
-    public ListNode mergeKLists(ListNode[] lists) {
-        //如果要合并的内容为空，直接返回null
-        if (lists == null || lists.length == 0) {
-            return null;
-        }
+写完只在对话里回复"已生成 spec.md 和 tasks.md，请 review"。
+不确定的地方在文件里标"? 不确定"，禁止脑补。
 
-        //合并第一个到最后一个列表
-        return mergeHelper(lists, 0, lists.length - 1);
-    }
-
-    //这里是分，把要处理的问题划分到最小的单位为止
-    private ListNode mergeHelper(ListNode[] lists, int left, int right) {
-        //如果分到了只剩一个，那么就直接返回，因为一个的话，它就已经是有序的了
-        if (left == right) {
-            return lists[left];
-        }
-
-        int mid = (left + right) / 2;
-        //如果还没有分发到最小的单位，那么就继续从中点位置再分
-        ListNode leftList = mergeHelper(lists, left, mid);
-        ListNode rightList = mergeHelper(lists, mid + 1, right);
-
-        //上面的得到的已经是最小的单位了，分完了之后就要治理了
-        return mergeTwoLists(leftList, rightList);
-    }
-
-    private ListNode mergeTwoLists(ListNode l1, ListNode l2) {
-        ListNode dummy = new ListNode(0);
-        ListNode curr = dummy;
-        while (l1 != null && l2 != null) {
-            if (l1.val < l2.val) {
-                curr.next = l1;
-                l1 = l1.next;
-            } else {
-                curr.next = l2;
-                l2 = l2.next;
-            }
-            curr = curr.next;
-        }
-        curr.next = l1 == null ? l2 : l1;
-        return dummy.next;
-    }
-
-
-}
+@tasks.md @spec.md @README.md @main.py 现在只做task.md中的【T1,T2 T3 T4 T5 T6】。要求：
+① 严格遵守 @spec.md 里的硬约束
+② 写完把 @tasks.md 里 的 [ ] 改成 [x]
+③ 自己用 requests/subprocess 跑一遍相关样例，打印实际返回 vs 预期
+④ 不一致就告诉我差在哪，不要顺手改其他任务

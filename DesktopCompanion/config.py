@@ -19,6 +19,8 @@ EXTERNAL_CONFIG_DIR = r"D:\tmp\GenshinImpact\configs"
 API_KEY_FILE = os.path.join(EXTERNAL_CONFIG_DIR, "GeminiAPIKey.txt")
 DEEPSEEK_API_KEY_FILE = os.path.join(EXTERNAL_CONFIG_DIR, "DeepSeekAPIKey.txt")
 SYSTEM_PROMPT_FILE = os.path.join(EXTERNAL_CONFIG_DIR, "SYSTEM_PROMPT——1.txt")
+# SYSTEM_PROMPT_FILE = os.path.join(EXTERNAL_CONFIG_DIR, "SYSTEM_TEMP.txt")
+# SYSTEM_PROMPT_FILE = os.path.join(EXTERNAL_CONFIG_DIR, "SYSTEM_PROMPT.txt")
 
 # ================= 核心配置 =================
 OVERLAY_CONFIG = {
@@ -32,19 +34,19 @@ OVERLAY_CONFIG = {
         "font_color": "#3690F7",  # 绿色文字
         "font_size": 11,           # 字体大小
         "line_height": 1.1,        # 行间距 (1.0 - 2.0)
-        "text_opacity": 1.0,        # 文字透明度 (0.0 - 1.0)
+        "text_opacity": 0.15,        # 文字透明度 (0.0 - 1.0)
         "padding_lines": 10        # 回答前后的空行数量
     },  
     "hotkeys": {
-        "toggle_visible": "caps lock+m",
-        "screenshot": "caps lock+d",
+        "toggle_visible": "caps lock+8",
+        "screenshot": "caps lock+space",
         "move_left": "caps lock+h",
         "move_right": "caps lock+j",
         "scroll_up": "caps lock+l",
         "scroll_down": "caps lock+k",
         "exit": "caps lock+shift+q",
         "restart": "caps lock+b",
-        "audio_capture": "caps lock+u"
+        "audio_capture": "caps lock+;"
     },
     "audio": {
         "buffer_seconds": 45,      # 滚动缓冲区保留的秒数
@@ -53,7 +55,6 @@ OVERLAY_CONFIG = {
     "load_test_file": True,           # 启动时是否加载测试文件
     "test_file_path": os.path.join(os.path.dirname(__file__), "tests", "test.txt"), # 测试文件路径
     "screenshot_save_dir": r"D:\tmp\GenshinImpact\pic",
-    "proxy": "http://127.0.0.1:7897", # 网络代理
     "scroll_step": 80,
     "move_step": 50,
     "ai_provider": "gemini",
@@ -65,7 +66,7 @@ OVERLAY_CONFIG = {
     ],
     # 单个模型一次请求允许连续等待响应的时间
     "gemini_model_timeout_seconds": 60,
-    "max_history_turns": 6,
+    "max_history_turns": 3,
     "deepseek_model": "deepseek-chat",
     "deepseek_base_url": "https://api.deepseek.com/v1"
 }
@@ -118,7 +119,6 @@ _load_external_secrets()
 WINDOW_CONFIG = OVERLAY_CONFIG["window"]
 TEXT_CONFIG = OVERLAY_CONFIG["text"]
 HOTKEY_CONFIG = OVERLAY_CONFIG["hotkeys"]
-PROXY_URL = OVERLAY_CONFIG.get("proxy", "")
 SCROLL_STEP = OVERLAY_CONFIG["scroll_step"]
 MOVE_STEP = OVERLAY_CONFIG["move_step"]
 AI_PROVIDER = OVERLAY_CONFIG.get("ai_provider", "gemini")

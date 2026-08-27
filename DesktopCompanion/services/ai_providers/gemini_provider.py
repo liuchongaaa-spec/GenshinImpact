@@ -9,7 +9,6 @@ from google import genai
 from google.genai import errors, types
 
 from DesktopCompanion.services.ai_providers.base import AIRequest
-from DesktopCompanion.services.network_transport import NetworkTransport
 
 
 class GeminiProvider:
@@ -21,7 +20,6 @@ class GeminiProvider:
         api_key: str,
         system_prompt: str,
         model_ids: tuple[str, ...] | list[str],
-        network_transport: NetworkTransport,
         timeout_seconds: float = 60.0,
         max_history_turns: int = 6,
         client=None,
@@ -37,13 +35,12 @@ class GeminiProvider:
             raise ValueError("At least one Gemini model must be configured")
         self.timeout_seconds = timeout_seconds
         self.max_history_turns = max(0, max_history_turns)
-        self.network_transport = network_transport
         self.client = client or genai.Client(
             api_key=api_key,
             http_options=types.HttpOptions(
                 timeout=int(timeout_seconds * 1000),
-                client_args=self.network_transport.gemini_client_args(),
-                async_client_args=self.network_transport.gemini_client_args(),
+                client_args={"trust_env": False},
+                async_client_args={"trust_env": False},
             ),
         )
         self.chat = None
@@ -58,7 +55,6 @@ class GeminiProvider:
 
     def check_availability(self) -> bool:
         """Find the first currently available model without changing network failures."""
-        self.network_transport.ensure_available()
         model_count = len(self.model_ids)
         for attempt_index in range(model_count):
             model_id = self.current_model_id
@@ -107,7 +103,6 @@ class GeminiProvider:
         return True
 
     def send(self, request: AIRequest) -> str:
-        self.network_transport.ensure_available()
         parts = [types.Part.from_text(text=request.prompt)]
         if request.image_bytes:
             parts.append(
@@ -163,7 +158,6 @@ class GeminiProvider:
         raise RuntimeError("No Gemini model completed the request")
 
     async def send_async(self, request: AIRequest) -> str:
-        self.network_transport.ensure_available()
         parts = [types.Part.from_text(text=request.prompt)]
         if request.image_bytes:
             parts.append(

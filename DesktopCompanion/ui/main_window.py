@@ -556,9 +556,13 @@ class OverlayAssistant(QMainWindow):
 
     def _show_error(self, error_message: str):
         self._assert_gui_thread()
-        font_color = TEXT_CONFIG.get("font_color", "#ff5555")
+        font_color = _to_rgba(
+            TEXT_CONFIG.get("font_color", "#ff5555"),
+            TEXT_CONFIG.get("text_opacity", 1.0),
+        )
+        font_size = TEXT_CONFIG.get("font_size", 11)
         self._append_html(
-            f"<div style='color:{font_color}; font-size:11px;'>"
+            f"<div style='color:{font_color}; font-size:{font_size}px;'>"
             f"Error: {error_message}</div>"
         )
 
