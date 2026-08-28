@@ -18,9 +18,9 @@ class InitializationError(Exception):
 EXTERNAL_CONFIG_DIR = r"D:\tmp\GenshinImpact\configs"
 API_KEY_FILE = os.path.join(EXTERNAL_CONFIG_DIR, "GeminiAPIKey.txt")
 DEEPSEEK_API_KEY_FILE = os.path.join(EXTERNAL_CONFIG_DIR, "DeepSeekAPIKey.txt")
-SYSTEM_PROMPT_FILE = os.path.join(EXTERNAL_CONFIG_DIR, "SYSTEM_PROMPT——1.txt")
+# SYSTEM_PROMPT_FILE = os.path.join(EXTERNAL_CONFIG_DIR, "SYSTEM_PROMPT——1.txt")
 # SYSTEM_PROMPT_FILE = os.path.join(EXTERNAL_CONFIG_DIR, "SYSTEM_TEMP.txt")
-# SYSTEM_PROMPT_FILE = os.path.join(EXTERNAL_CONFIG_DIR, "SYSTEM_PROMPT.txt")
+SYSTEM_PROMPT_FILE = os.path.join(EXTERNAL_CONFIG_DIR, "SYSTEM_PROMPT.txt")
 
 # ================= 核心配置 =================
 OVERLAY_CONFIG = {
@@ -48,6 +48,7 @@ OVERLAY_CONFIG = {
         "restart": "caps lock+b",
         "audio_capture": "caps lock+;"
     },
+    "triple_click_interval_ms": 1000,
     "audio": {
         "buffer_seconds": 45,      # 滚动缓冲区保留的秒数
         "sample_rate": 16000       # 采样率 (Hz)
@@ -119,6 +120,7 @@ _load_external_secrets()
 WINDOW_CONFIG = OVERLAY_CONFIG["window"]
 TEXT_CONFIG = OVERLAY_CONFIG["text"]
 HOTKEY_CONFIG = OVERLAY_CONFIG["hotkeys"]
+TRIPLE_CLICK_INTERVAL_MS = int(OVERLAY_CONFIG.get("triple_click_interval_ms", 1000))
 SCROLL_STEP = OVERLAY_CONFIG["scroll_step"]
 MOVE_STEP = OVERLAY_CONFIG["move_step"]
 AI_PROVIDER = OVERLAY_CONFIG.get("ai_provider", "gemini")

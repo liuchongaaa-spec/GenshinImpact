@@ -4,9 +4,11 @@
 import ctypes
 import os
 import sys
+import time
 from ctypes import wintypes
 
 import keyboard
+import mouse
 from PyQt5.QtCore import QEvent, QObject, QThread, QTimer, Qt, pyqtSignal
 from PyQt5.QtGui import QTextCursor
 from PyQt5.QtWidgets import (
@@ -25,6 +27,7 @@ from DesktopCompanion.config import (
     SCROLL_STEP,
     TEST_FILE_PATH,
     TEXT_CONFIG,
+    TRIPLE_CLICK_INTERVAL_MS,
     WINDOW_CONFIG,
     WINDOW_TITLE,
 )
@@ -139,6 +142,8 @@ class OverlayAssistant(QMainWindow):
         self._content_fragments = []
         self._surface_content_rendered = False
         self._hotkey_handles = []
+        self._mouse_hook = None
+        self._left_click_times = []
         self._shutdown_started = False
 
         self.controller.start()
@@ -147,6 +152,7 @@ class OverlayAssistant(QMainWindow):
         self._connect_signals()
         self._setup_window_protection()
         self._setup_hotkeys()
+        self._setup_mouse_listener()
         self._setup_tray()
         self._load_initial_content()
 
@@ -199,6 +205,33 @@ class OverlayAssistant(QMainWindow):
 
         print(f"快捷键已注册: {', '.join(key for key, _ in bindings)}")
 
+    def _setup_mouse_listener(self):
+        try:
+            self._mouse_hook = mouse.hook(self._handle_global_mouse_event)
+        except Exception as exc:
+            print(f"鼠标左键三击注册失败: {exc}")
+
+    def _handle_global_mouse_event(self, event):
+        if not isinstance(event, mouse.ButtonEvent):
+            return
+        if event.button != mouse.LEFT or event.event_type not in (
+            mouse.DOWN,
+            mouse.DOUBLE,
+        ):
+            return
+
+        now = time.monotonic()
+        interval_seconds = TRIPLE_CLICK_INTERVAL_MS / 1000.0
+        self._left_click_times = [
+            click_time
+            for click_time in self._left_click_times
+            if now - click_time <= interval_seconds
+        ]
+        self._left_click_times.append(now)
+        if len(self._left_click_times) >= 3:
+            self._left_click_times.clear()
+            self.signals.screenshot_requested.emit()
+
     def _setup_tray(self):
         self.tray_manager = TrayManager(self)
         self.tray_manager.show()
@@ -234,6 +267,14 @@ class OverlayAssistant(QMainWindow):
                 keyboard.remove_hotkey(handle)
             except Exception:
                 pass
+
+        mouse_hook, self._mouse_hook = self._mouse_hook, None
+        if mouse_hook is not None:
+            try:
+                mouse.unhook(mouse_hook)
+            except Exception:
+                pass
+        self._left_click_times.clear()
 
         if self.tray_manager:
             self.tray_manager.hide()
