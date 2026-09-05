@@ -21,12 +21,14 @@ from PyQt5.QtWidgets import (
 )
 
 from DesktopCompanion.config import (
+    ANSWER_TOP_OFFSET_LINES,
     HOTKEY_CONFIG,
     LOAD_TEST_FILE,
     MOVE_STEP,
-    SCROLL_STEP,
+    SCROLL_LINES,
     TEST_FILE_PATH,
     TEXT_CONFIG,
+    TRAILING_PADDING_LINES,
     TRIPLE_CLICK_INTERVAL_MS,
     WINDOW_CONFIG,
     WINDOW_TITLE,
@@ -140,6 +142,10 @@ class OverlayAssistant(QMainWindow):
         self._protection_timer = None
         self._protection_check_scheduled = False
         self._content_fragments = []
+        self._has_temporary_trailing_padding = False
+        self._latest_answer_fragment_index = None
+        self._latest_answer_start_position = None
+        self._answer_position_pending = False
         self._surface_content_rendered = False
         self._hotkey_handles = []
         self._mouse_hook = None
@@ -185,8 +191,8 @@ class OverlayAssistant(QMainWindow):
             (hotkeys["screenshot"], lambda: self.signals.screenshot_requested.emit()),
             (hotkeys["move_left"], lambda: self.signals.move_window.emit(-MOVE_STEP)),
             (hotkeys["move_right"], lambda: self.signals.move_window.emit(MOVE_STEP)),
-            (hotkeys["scroll_up"], lambda: self.signals.scroll_content.emit(-SCROLL_STEP)),
-            (hotkeys["scroll_down"], lambda: self.signals.scroll_content.emit(SCROLL_STEP)),
+            (hotkeys["scroll_up"], lambda: self.signals.scroll_content.emit(-SCROLL_LINES)),
+            (hotkeys["scroll_down"], lambda: self.signals.scroll_content.emit(SCROLL_LINES)),
             (hotkeys["exit"], lambda: self.signals.exit_app.emit()),
         ]
 
@@ -448,10 +454,11 @@ class OverlayAssistant(QMainWindow):
         self.move(new_x, geometry.y())
         self._schedule_protection_check()
 
-    def _handle_scroll_content(self, delta: int):
+    def _handle_scroll_content(self, line_count: int):
         self._assert_gui_thread()
         scrollbar = self.text_area.verticalScrollBar()
-        scrollbar.setValue(scrollbar.value() + delta)
+        line_height = self.text_area.fontMetrics().lineSpacing()
+        scrollbar.setValue(scrollbar.value() + line_count * line_height)
 
     def _handle_screenshot(self):
         self._assert_gui_thread()
@@ -547,13 +554,19 @@ class OverlayAssistant(QMainWindow):
 
     def _handle_task_content_started(self, _status: str):
         self._assert_gui_thread()
+        self._answer_position_pending = False
+        self._remove_temporary_trailing_padding()
         self._append_html(self._task_padding())
 
     def _handle_task_completed(self, html: str):
         self._assert_gui_thread()
         if html:
-            self._append_html(html)
-        self._append_html(self._task_padding())
+            self._latest_answer_fragment_index = len(self._content_fragments)
+            self._latest_answer_start_position = None
+            self._append_html(html, ensure_visible=False)
+            self._append_temporary_trailing_padding()
+            self._answer_position_pending = True
+            self._position_latest_answer()
 
     def _handle_task_failed(self, error_message: str):
         self._assert_gui_thread()
@@ -563,10 +576,38 @@ class OverlayAssistant(QMainWindow):
     def _task_padding() -> str:
         return "<br>" * TEXT_CONFIG.get("padding_lines", 0)
 
-    def _append_html(self, html: str):
+    @staticmethod
+    def _trailing_padding() -> str:
+        return "<br>" * TRAILING_PADDING_LINES
+
+    def _append_temporary_trailing_padding(self):
+        padding = self._trailing_padding()
+        if not padding:
+            return
+        self._has_temporary_trailing_padding = True
+        self._append_html(padding, ensure_visible=False)
+
+    def _remove_temporary_trailing_padding(self):
+        if not self._has_temporary_trailing_padding:
+            return
+        self._has_temporary_trailing_padding = False
+        padding = self._trailing_padding()
+        if self._content_fragments and self._content_fragments[-1] == padding:
+            self._content_fragments.pop()
+
+        if not self._visibility_requested or not self.isVisible():
+            self._surface_content_rendered = False
+            return
+        if not self._verify_window_protection():
+            return
+        if self._surface_content_rendered:
+            self._render_all_content()
+
+    def _append_html(self, html: str, ensure_visible: bool = True):
         self._assert_gui_thread()
         if not html:
             return
+        fragment_index = len(self._content_fragments)
         self._content_fragments.append(html)
         if not self._visibility_requested or not self.isVisible():
             self._surface_content_rendered = False
@@ -576,20 +617,62 @@ class OverlayAssistant(QMainWindow):
         if not self._surface_content_rendered:
             self._render_all_content()
             return
-        self._insert_html_into_surface(html)
+        start_position = self._insert_html_into_surface(
+            html,
+            ensure_visible=ensure_visible,
+        )
+        if fragment_index == self._latest_answer_fragment_index:
+            self._latest_answer_start_position = start_position
 
-    def _insert_html_into_surface(self, html: str):
+    def _insert_html_into_surface(self, html: str, ensure_visible: bool = True):
+        scrollbar = self.text_area.verticalScrollBar()
+        previous_scroll_value = scrollbar.value()
         cursor = self.text_area.textCursor()
         cursor.movePosition(QTextCursor.End)
+        start_position = cursor.position()
         self.text_area.setTextCursor(cursor)
         self.text_area.insertHtml(html)
-        self.text_area.ensureCursorVisible()
+        if ensure_visible:
+            self.text_area.ensureCursorVisible()
+        else:
+            scrollbar.setValue(previous_scroll_value)
+        return start_position
 
     def _render_all_content(self):
         self.text_area.clear()
-        for fragment in self._content_fragments:
-            self._insert_html_into_surface(fragment)
+        self._latest_answer_start_position = None
+        last_index = len(self._content_fragments) - 1
+        for index, fragment in enumerate(self._content_fragments):
+            is_temporary_trailing_padding = (
+                self._has_temporary_trailing_padding and index == last_index
+            )
+            start_position = self._insert_html_into_surface(
+                fragment,
+                ensure_visible=not is_temporary_trailing_padding,
+            )
+            if index == self._latest_answer_fragment_index:
+                self._latest_answer_start_position = start_position
         self._surface_content_rendered = True
+        if self._answer_position_pending:
+            self._position_latest_answer()
+
+    def _position_latest_answer(self):
+        if not self._answer_position_pending:
+            return
+        if not self._visibility_requested or not self.isVisible():
+            return
+        if not self._surface_content_rendered:
+            return
+        if self._latest_answer_start_position is None:
+            return
+
+        cursor = QTextCursor(self.text_area.document())
+        cursor.setPosition(self._latest_answer_start_position)
+        answer_top = self.text_area.cursorRect(cursor).top()
+        desired_top = ANSWER_TOP_OFFSET_LINES * self.text_area.fontMetrics().lineSpacing()
+        scrollbar = self.text_area.verticalScrollBar()
+        scrollbar.setValue(scrollbar.value() + answer_top - desired_top)
+        self._answer_position_pending = False
 
     def _clear_sensitive_surface(self):
         self.text_area.clear()
