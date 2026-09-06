@@ -11,6 +11,7 @@ class AIRequest:
     prompt: str
     image_bytes: bytes | None = None
     audio_bytes: bytes | None = None
+    model_profile: str = "standard"
 
 
 class AIProvider(Protocol):

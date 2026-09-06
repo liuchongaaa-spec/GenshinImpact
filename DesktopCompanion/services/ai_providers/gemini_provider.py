@@ -20,7 +20,9 @@ class GeminiProvider:
         api_key: str,
         system_prompt: str,
         model_ids: tuple[str, ...] | list[str],
+        advanced_model_ids: tuple[str, ...] | list[str],
         timeout_seconds: float = 60.0,
+        advanced_timeout_seconds: float = 120.0,
         max_history_turns: int = 6,
         client=None,
     ) -> None:
@@ -33,7 +35,17 @@ class GeminiProvider:
         )
         if not self.model_ids:
             raise ValueError("At least one Gemini model must be configured")
+        self.advanced_model_ids = list(
+            dict.fromkeys(
+                model_id.strip()
+                for model_id in advanced_model_ids
+                if model_id.strip()
+            )
+        )
+        if not self.advanced_model_ids:
+            raise ValueError("At least one advanced Gemini model must be configured")
         self.timeout_seconds = timeout_seconds
+        self.advanced_timeout_seconds = advanced_timeout_seconds
         self.max_history_turns = max(0, max_history_turns)
         self.client = client or genai.Client(
             api_key=api_key,
@@ -81,7 +93,7 @@ class GeminiProvider:
             except Exception as exc:
                 if not self._should_try_next_model(exc):
                     raise
-                self._move_model_to_end(model_id)
+                self._move_model_to_end(model_id, self.model_ids)
                 if attempt_index == model_count - 1:
                     raise
                 print(
@@ -90,12 +102,20 @@ class GeminiProvider:
                 )
         return False
 
-    def create_session(self, model_id: str | None = None) -> bool:
+    def create_session(
+        self,
+        model_id: str | None = None,
+        timeout_seconds: float | None = None,
+    ) -> bool:
         model_id = model_id or self.current_model_id
+        timeout_seconds = timeout_seconds or self.timeout_seconds
         self.chat = self.client.chats.create(
             model=model_id,
             config=types.GenerateContentConfig(
                 system_instruction=self.system_prompt,
+                http_options=types.HttpOptions(
+                    timeout=int(timeout_seconds * 1000),
+                ),
             ),
             history=list(self.history),
         )
@@ -119,10 +139,11 @@ class GeminiProvider:
                 )
             )
 
-        candidate_models = list(self.model_ids)
+        model_ids, timeout_seconds = self._request_settings(request)
+        candidate_models = list(model_ids)
         for attempt_index, model_id in enumerate(candidate_models):
             if self.chat is None or self.chat_model_id != model_id:
-                self.create_session(model_id)
+                self.create_session(model_id, timeout_seconds)
 
             try:
                 chunks: list[str] = []
@@ -138,7 +159,7 @@ class GeminiProvider:
                 if not timed_out and not model_unavailable:
                     raise
                 if model_unavailable:
-                    self._move_model_to_end(model_id)
+                    self._move_model_to_end(model_id, model_ids)
                 if attempt_index == len(candidate_models) - 1:
                     raise
                 reason = "请求超时" if timed_out else "暂时不可用"
@@ -174,12 +195,16 @@ class GeminiProvider:
                 )
             )
 
-        candidate_models = list(self.model_ids)
+        model_ids, timeout_seconds = self._request_settings(request)
+        candidate_models = list(model_ids)
         for attempt_index, model_id in enumerate(candidate_models):
             self.async_chat = self.client.aio.chats.create(
                 model=model_id,
                 config=types.GenerateContentConfig(
                     system_instruction=self.system_prompt,
+                    http_options=types.HttpOptions(
+                        timeout=int(timeout_seconds * 1000),
+                    ),
                 ),
                 history=list(self.history),
             )
@@ -204,7 +229,7 @@ class GeminiProvider:
                 if not timed_out and not model_unavailable:
                     raise
                 if model_unavailable:
-                    self._move_model_to_end(model_id)
+                    self._move_model_to_end(model_id, model_ids)
                 if attempt_index == len(candidate_models) - 1:
                     raise
                 reason = "请求超时" if timed_out else "暂时不可用"
@@ -222,10 +247,16 @@ class GeminiProvider:
 
         raise RuntimeError("No Gemini model completed the request")
 
-    def _move_model_to_end(self, model_id: str) -> None:
-        if model_id in self.model_ids:
-            self.model_ids.remove(model_id)
-            self.model_ids.append(model_id)
+    def _request_settings(self, request: AIRequest) -> tuple[list[str], float]:
+        if request.model_profile == "advanced":
+            return self.advanced_model_ids, self.advanced_timeout_seconds
+        return self.model_ids, self.timeout_seconds
+
+    @staticmethod
+    def _move_model_to_end(model_id: str, model_ids: list[str]) -> None:
+        if model_id in model_ids:
+            model_ids.remove(model_id)
+            model_ids.append(model_id)
 
     @staticmethod
     def _should_try_next_model(error: Exception) -> bool:

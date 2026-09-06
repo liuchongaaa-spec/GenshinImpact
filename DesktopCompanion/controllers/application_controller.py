@@ -105,8 +105,11 @@ class ApplicationController(QObject):
             self._request_gate = None
             self._loop_thread = None
 
-    def request_screenshot(self) -> bool:
-        return self._run_once("screenshot", self._run_screenshot)
+    def request_screenshot(self, model_profile: str = "standard") -> bool:
+        return self._run_once(
+            "screenshot",
+            lambda: self._run_screenshot(model_profile),
+        )
 
     def request_audio_capture(self) -> bool:
         return self._run_once("audio", self._run_audio_capture)
@@ -159,12 +162,13 @@ class ApplicationController(QObject):
                     self._busy = False
                     self._active_future = None
 
-    async def _run_screenshot(self) -> str:
+    async def _run_screenshot(self, model_profile: str = "standard") -> str:
         image_bytes = self._capture_screenshot()
         return await self._send_to_ai(
             AIRequest(
                 prompt="请识别当前截图中的面试题目，并严格按照系统提示词的要求给出答案。",
                 image_bytes=image_bytes,
+                model_profile=model_profile,
             )
         )
 

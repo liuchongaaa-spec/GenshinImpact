@@ -42,6 +42,7 @@ from DesktopCompanion.utils.markdown_renderer import get_markdown_css, markdown_
 class WorkerSignals(QObject):
     toggle_visible = pyqtSignal()
     screenshot_requested = pyqtSignal()
+    advanced_screenshot_requested = pyqtSignal()
     move_window = pyqtSignal(int)
     scroll_content = pyqtSignal(int)
     exit_app = pyqtSignal()
@@ -175,6 +176,9 @@ class OverlayAssistant(QMainWindow):
     def _connect_signals(self):
         self.signals.toggle_visible.connect(self._handle_toggle_visible)
         self.signals.screenshot_requested.connect(self._handle_screenshot)
+        self.signals.advanced_screenshot_requested.connect(
+            self._handle_advanced_screenshot
+        )
         self.signals.move_window.connect(self._handle_move_window)
         self.signals.scroll_content.connect(self._handle_scroll_content)
         self.signals.exit_app.connect(self._handle_exit)
@@ -189,6 +193,10 @@ class OverlayAssistant(QMainWindow):
         bindings = [
             (hotkeys["toggle_visible"], lambda: self.signals.toggle_visible.emit()),
             (hotkeys["screenshot"], lambda: self.signals.screenshot_requested.emit()),
+            (
+                hotkeys["advanced_screenshot"],
+                lambda: self.signals.advanced_screenshot_requested.emit(),
+            ),
             (hotkeys["move_left"], lambda: self.signals.move_window.emit(-MOVE_STEP)),
             (hotkeys["move_right"], lambda: self.signals.move_window.emit(MOVE_STEP)),
             (hotkeys["scroll_up"], lambda: self.signals.scroll_content.emit(-SCROLL_LINES)),
@@ -464,6 +472,11 @@ class OverlayAssistant(QMainWindow):
         self._assert_gui_thread()
         self._verify_window_protection()
         self.controller.request_screenshot()
+
+    def _handle_advanced_screenshot(self):
+        self._assert_gui_thread()
+        self._verify_window_protection()
+        self.controller.request_screenshot(model_profile="advanced")
 
     def _handle_audio_capture(self):
         self._assert_gui_thread()
